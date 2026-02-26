@@ -275,8 +275,10 @@ def normalize_polymarket_items(
     normalized = []
 
     for i, item in enumerate(items):
+        # Prefer volume1mo (more stable) for engagement scoring, fall back to volume24hr
+        volume = item.get("volume1mo") or item.get("volume24hr", 0.0)
         engagement = schema.Engagement(
-            volume=item.get("volume24hr", 0.0),
+            volume=volume,
             liquidity=item.get("liquidity", 0.0),
         )
 

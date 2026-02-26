@@ -16,7 +16,15 @@ from . import http
 
 GAMMA_SEARCH_URL = "https://gamma-api.polymarket.com/public-search"
 
+# Pages to fetch per query (API returns 5 events per page, limit param is a no-op)
 DEPTH_CONFIG = {
+    "quick": 1,
+    "default": 2,
+    "deep": 3,
+}
+
+# Max events to return after merge + dedup + re-ranking
+RESULT_CAP = {
     "quick": 5,
     "default": 10,
     "deep": 20,
@@ -82,22 +90,19 @@ def _expand_queries(topic: str) -> List[str]:
     return unique[:4]
 
 
-def _search_single_query(query: str, limit: int) -> Dict[str, Any]:
+def _search_single_query(query: str, page: int = 1) -> Dict[str, Any]:
     """Run a single search query against Gamma API."""
-    params = {
-        "q": query,
-        "limit": str(limit),
-    }
+    params = {"q": query, "page": str(page)}
     url = f"{GAMMA_SEARCH_URL}?{urlencode(params)}"
 
     try:
         response = http.request("GET", url, timeout=15, retries=2)
         return response
     except http.HTTPError as e:
-        _log(f"Search failed for '{query}': {e}")
+        _log(f"Search failed for '{query}' page {page}: {e}")
         return {"events": [], "error": str(e)}
     except Exception as e:
-        _log(f"Search failed for '{query}': {e}")
+        _log(f"Search failed for '{query}' page {page}: {e}")
         return {"events": [], "error": str(e)}
 
 
@@ -120,20 +125,22 @@ def search_polymarket(
     Returns:
         Dict with 'events' list and optional 'error'.
     """
-    limit_per_query = DEPTH_CONFIG.get(depth, DEPTH_CONFIG["default"])
+    pages = DEPTH_CONFIG.get(depth, DEPTH_CONFIG["default"])
+    cap = RESULT_CAP.get(depth, RESULT_CAP["default"])
     queries = _expand_queries(topic)
 
-    _log(f"Searching for '{topic}' with queries: {queries} (limit={limit_per_query})")
+    _log(f"Searching for '{topic}' with queries: {queries} (pages={pages})")
 
-    # Run all queries in parallel
+    # Run all (query, page) combinations in parallel
     all_events = {}  # event_id -> (event_data, query_index)
     errors = []
 
-    with ThreadPoolExecutor(max_workers=min(4, len(queries))) as executor:
-        futures = {
-            executor.submit(_search_single_query, q, limit_per_query): i
-            for i, q in enumerate(queries)
-        }
+    with ThreadPoolExecutor(max_workers=min(8, len(queries) * pages)) as executor:
+        futures = {}
+        for i, q in enumerate(queries):
+            for p in range(1, pages + 1):
+                future = executor.submit(_search_single_query, q, p)
+                futures[future] = i
 
         for future in as_completed(futures):
             query_idx = futures[future]
@@ -156,11 +163,10 @@ def search_polymarket(
             except Exception as e:
                 errors.append(str(e))
 
-    # Sort by query priority, then by position
     merged_events = [ev for ev, _ in sorted(all_events.values(), key=lambda x: x[1])]
-    _log(f"Found {len(merged_events)} unique events across {len(queries)} queries")
+    _log(f"Found {len(merged_events)} unique events across {len(queries)} queries x {pages} pages")
 
-    result = {"events": merged_events}
+    result = {"events": merged_events, "_cap": cap}
     if errors and not merged_events:
         result["error"] = "; ".join(errors[:2])
     return result
@@ -225,6 +231,38 @@ def _parse_outcome_prices(market: Dict[str, Any]) -> List[tuple]:
         result.append((name, p))
 
     return result
+
+
+def _compute_text_similarity(topic: str, title: str) -> float:
+    """Score how well the event title matches the search topic.
+
+    Returns 0.0-1.0. Substring containment gets full score,
+    token overlap gets proportional score.
+    """
+    core = _extract_core_subject(topic).lower()
+    title_lower = title.lower()
+    if not core:
+        return 0.5
+
+    # Full substring match
+    if core in title_lower:
+        return 1.0
+
+    # Token overlap fallback
+    topic_tokens = set(core.split())
+    title_tokens = set(title_lower.split())
+    if not topic_tokens:
+        return 0.5
+    overlap = len(topic_tokens & title_tokens)
+    return overlap / len(topic_tokens)
+
+
+def _safe_float(val, default=0.0) -> float:
+    """Safely convert a value to float."""
+    try:
+        return float(val or default)
+    except (ValueError, TypeError):
+        return default
 
 
 def parse_polymarket_response(response: Dict[str, Any], topic: str = "") -> List[Dict[str, Any]]:
@@ -293,15 +331,13 @@ def parse_polymarket_response(response: Dict[str, Any], topic: str = "") -> List
         # Format price movement
         price_movement = _format_price_movement(top_market)
 
-        # Volume and liquidity
-        try:
-            volume24hr = float(top_market.get("volume24hr", 0) or 0)
-        except (ValueError, TypeError):
-            volume24hr = 0.0
-        try:
-            liquidity = float(top_market.get("liquidity", 0) or 0)
-        except (ValueError, TypeError):
-            liquidity = 0.0
+        # Volume and liquidity - prefer event-level (more stable), fall back to market-level
+        event_volume1mo = _safe_float(event.get("volume1mo"))
+        event_volume1wk = _safe_float(event.get("volume1wk"))
+        event_liquidity = _safe_float(event.get("liquidity"))
+        event_competitive = _safe_float(event.get("competitive"))
+        volume24hr = _safe_float(event.get("volume24hr")) or _safe_float(top_market.get("volume24hr"))
+        liquidity = event_liquidity or _safe_float(top_market.get("liquidity"))
 
         # Event URL
         url = f"https://polymarket.com/event/{slug}" if slug else f"https://polymarket.com/event/{event_id}"
@@ -310,7 +346,6 @@ def parse_polymarket_response(response: Dict[str, Any], topic: str = "") -> List
         updated_at = event.get("updatedAt", "")
         date_str = None
         if updated_at:
-            # Parse ISO format: "2026-02-20T15:30:00.000Z"
             try:
                 date_str = updated_at[:10]  # YYYY-MM-DD
             except (IndexError, TypeError):
@@ -324,10 +359,33 @@ def parse_polymarket_response(response: Dict[str, Any], topic: str = "") -> List
             except (IndexError, TypeError):
                 end_date = None
 
-        # Relevance: position-based decay
-        rank_score = max(0.3, 1.0 - (i * 0.03))  # 1.0 -> 0.3 over ~23 items
-        engagement_boost = min(0.15, math.log1p(volume24hr) / 60)
-        relevance = min(1.0, rank_score * 0.75 + engagement_boost + 0.1)
+        # Quality-signal relevance (replaces position-based decay)
+        text_score = _compute_text_similarity(topic, title) if topic else 0.5
+
+        # Volume signal: log-scaled monthly volume (most stable signal)
+        vol_raw = event_volume1mo or event_volume1wk or volume24hr
+        vol_score = min(1.0, math.log1p(vol_raw) / 16)  # ~$9M = 1.0
+
+        # Liquidity signal
+        liq_score = min(1.0, math.log1p(liquidity) / 14)  # ~$1.2M = 1.0
+
+        # Price movement: daily weighted more than monthly
+        day_change = abs(top_market.get("oneDayPriceChange") or 0) * 3
+        week_change = abs(top_market.get("oneWeekPriceChange") or 0) * 2
+        month_change = abs(top_market.get("oneMonthPriceChange") or 0)
+        max_change = max(day_change, week_change, month_change)
+        movement_score = min(1.0, max_change * 5)  # 20% change = 1.0
+
+        # Competitive bonus: markets near 50/50 are more interesting
+        competitive_score = event_competitive
+
+        relevance = min(1.0, (
+            0.30 * text_score +
+            0.30 * vol_score +
+            0.15 * liq_score +
+            0.15 * movement_score +
+            0.10 * competitive_score
+        ))
 
         # Top 3 outcomes for multi-outcome markets
         top_outcomes = outcome_prices[:3]
@@ -344,6 +402,7 @@ def parse_polymarket_response(response: Dict[str, Any], topic: str = "") -> List
             "outcomes_remaining": remaining,
             "price_movement": price_movement,
             "volume24hr": volume24hr,
+            "volume1mo": event_volume1mo,
             "liquidity": liquidity,
             "date": date_str,
             "end_date": end_date,
@@ -351,4 +410,7 @@ def parse_polymarket_response(response: Dict[str, Any], topic: str = "") -> List
             "why_relevant": f"Prediction market: {title[:60]}",
         })
 
-    return items
+    # Sort by relevance (quality-signal ranked) and apply cap
+    items.sort(key=lambda x: x["relevance"], reverse=True)
+    cap = response.get("_cap", len(items))
+    return items[:cap]

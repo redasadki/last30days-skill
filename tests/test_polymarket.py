@@ -458,14 +458,150 @@ class TestPolymarketSchemaRoundTrip(unittest.TestCase):
 
 
 class TestDepthConfig(unittest.TestCase):
-    def test_quick_depth(self):
-        self.assertEqual(polymarket.DEPTH_CONFIG["quick"], 5)
+    def test_quick_pages(self):
+        self.assertEqual(polymarket.DEPTH_CONFIG["quick"], 1)
 
-    def test_default_depth(self):
-        self.assertEqual(polymarket.DEPTH_CONFIG["default"], 10)
+    def test_default_pages(self):
+        self.assertEqual(polymarket.DEPTH_CONFIG["default"], 2)
 
-    def test_deep_depth(self):
-        self.assertEqual(polymarket.DEPTH_CONFIG["deep"], 20)
+    def test_deep_pages(self):
+        self.assertEqual(polymarket.DEPTH_CONFIG["deep"], 3)
+
+    def test_result_cap_quick(self):
+        self.assertEqual(polymarket.RESULT_CAP["quick"], 5)
+
+    def test_result_cap_default(self):
+        self.assertEqual(polymarket.RESULT_CAP["default"], 10)
+
+    def test_result_cap_deep(self):
+        self.assertEqual(polymarket.RESULT_CAP["deep"], 20)
+
+
+class TestTextSimilarity(unittest.TestCase):
+    def test_exact_substring_match(self):
+        score = polymarket._compute_text_similarity("Arizona", "Will Arizona win the NCAA Tournament?")
+        self.assertEqual(score, 1.0)
+
+    def test_full_topic_substring(self):
+        score = polymarket._compute_text_similarity("Arizona Basketball", "Arizona Basketball Championship")
+        self.assertEqual(score, 1.0)
+
+    def test_partial_token_overlap(self):
+        score = polymarket._compute_text_similarity("Arizona Basketball", "Will Arizona win?")
+        # "Arizona" matches, "Basketball" doesn't -> 0.5
+        self.assertAlmostEqual(score, 0.5)
+
+    def test_no_overlap(self):
+        score = polymarket._compute_text_similarity("Arizona Basketball", "Will AI regulation pass?")
+        self.assertEqual(score, 0.0)
+
+    def test_empty_topic(self):
+        score = polymarket._compute_text_similarity("", "Will Arizona win?")
+        self.assertEqual(score, 0.5)
+
+    def test_case_insensitive(self):
+        score = polymarket._compute_text_similarity("arizona", "ARIZONA Big 12")
+        self.assertEqual(score, 1.0)
+
+    def test_prefix_stripped(self):
+        score = polymarket._compute_text_similarity("last 7 days Arizona", "Will Arizona win?")
+        self.assertEqual(score, 1.0)
+
+
+class TestQualityRanking(unittest.TestCase):
+    """Verify quality-signal ranking: high-volume matching events rank above tangential ones."""
+
+    def setUp(self):
+        fixture_path = Path(__file__).parent.parent / "fixtures" / "polymarket_sample.json"
+        with open(fixture_path) as f:
+            self.sample = json.load(f)
+
+    def test_topic_matching_ranks_above_tangential(self):
+        """Arizona markets should rank above AI regulation when topic is 'Arizona Basketball'."""
+        items = polymarket.parse_polymarket_response(self.sample, topic="Arizona Basketball")
+        titles = [item["title"] for item in items]
+        # Arizona events should come before tangential AI regulation event
+        arizona_indices = [i for i, t in enumerate(titles) if "Arizona" in t or "Big 12" in t]
+        tangential_indices = [i for i, t in enumerate(titles) if "AI regulation" in t]
+        if tangential_indices:
+            self.assertTrue(max(arizona_indices) < min(tangential_indices),
+                f"Arizona markets should rank above tangential. Order: {titles}")
+
+    def test_high_volume_ranks_above_low_volume(self):
+        """Among matching events, higher volume should rank higher."""
+        items = polymarket.parse_polymarket_response(self.sample, topic="Arizona Basketball")
+        # Arizona Big 12 has $3.5M monthly volume, Arizona NCAA has $800K
+        big12 = [i for i, item in enumerate(items) if "Big 12 Championship" in item["title"]]
+        ncaa = [i for i, item in enumerate(items) if "NCAA Tournament" in item["title"]]
+        if big12 and ncaa:
+            self.assertLess(big12[0], ncaa[0],
+                "Higher volume Big 12 should rank above lower volume NCAA")
+
+    def test_result_cap_applied(self):
+        """Parse should respect the _cap from search response."""
+        capped_response = dict(self.sample)
+        capped_response["_cap"] = 2
+        items = polymarket.parse_polymarket_response(capped_response, topic="Arizona")
+        self.assertLessEqual(len(items), 2)
+
+    def test_no_topic_still_ranks(self):
+        """Without a topic, relevance should still be computed from volume/liquidity."""
+        items = polymarket.parse_polymarket_response(self.sample)
+        self.assertTrue(len(items) > 0)
+        for item in items:
+            self.assertGreaterEqual(item["relevance"], 0.0)
+            self.assertLessEqual(item["relevance"], 1.0)
+
+    def test_relevance_sorted_descending(self):
+        """Items should be sorted by relevance descending."""
+        items = polymarket.parse_polymarket_response(self.sample, topic="Arizona Basketball")
+        relevances = [item["relevance"] for item in items]
+        self.assertEqual(relevances, sorted(relevances, reverse=True))
+
+
+class TestNormalizePolymarketVolume1mo(unittest.TestCase):
+    """Verify normalization prefers volume1mo over volume24hr for engagement."""
+
+    def test_volume1mo_preferred(self):
+        raw_items = [
+            {
+                "event_id": "evt-1",
+                "title": "Test",
+                "question": "Q?",
+                "url": "https://polymarket.com/event/test",
+                "outcome_prices": [],
+                "outcomes_remaining": 0,
+                "volume24hr": 100.0,
+                "volume1mo": 5000000.0,
+                "liquidity": 1000.0,
+                "date": "2026-02-20",
+                "relevance": 0.8,
+                "why_relevant": "Test",
+            }
+        ]
+        result = normalize.normalize_polymarket_items(raw_items, "2026-01-01", "2026-03-01")
+        # Engagement volume should be volume1mo (5M), not volume24hr (100)
+        self.assertEqual(result[0].engagement.volume, 5000000.0)
+
+    def test_fallback_to_volume24hr(self):
+        raw_items = [
+            {
+                "event_id": "evt-1",
+                "title": "Test",
+                "question": "Q?",
+                "url": "https://polymarket.com/event/test",
+                "outcome_prices": [],
+                "outcomes_remaining": 0,
+                "volume24hr": 50000.0,
+                "liquidity": 1000.0,
+                "date": "2026-02-20",
+                "relevance": 0.8,
+                "why_relevant": "Test",
+            }
+        ]
+        result = normalize.normalize_polymarket_items(raw_items, "2026-01-01", "2026-03-01")
+        # No volume1mo, should fall back to volume24hr
+        self.assertEqual(result[0].engagement.volume, 50000.0)
 
 
 if __name__ == "__main__":
