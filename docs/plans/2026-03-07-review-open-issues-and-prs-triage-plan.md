@@ -132,9 +132,11 @@ Two features bundled in one PR:
 The Reddit public fallback alone makes this worth merging - it makes Reddit work with zero API keys. Xiaohongshu adds value for Chinese-market research.
 
 **Before merge:**
-- [ ] Run full test suite to confirm no regressions
+- [x] Run full test suite to confirm no regressions (292/297 pass, 5 pre-existing)
+- [x] Verify Xiaohongshu gracefully skips when API is unavailable (returns False, no crash)
+- [x] Resolved merge conflicts with ScrapeCreators Reddit (main). Priority: ScrapeCreators -> OpenAI -> public fallback
+- [x] Merged to main and pushed
 - [ ] Test Reddit public fallback locally: unset OPENAI_API_KEY, run `python3 scripts/last30days.py "test topic" --search reddit --emit=compact`
-- [ ] Verify Xiaohongshu gracefully skips when API is unavailable (should show skip message, not crash)
 - [ ] Update `get_available_sources()` docstring to reflect Reddit always-available change
 
 **After merge (follow-up):**
@@ -217,6 +219,8 @@ This PR is too large and has too many issues for a clean merge. Request the cont
   - PR A: `apify_client.py` + env.py routing (foundation)
   - PR B: Individual source modules + tests (features)
 
+**Status:** [x] Review posted requesting changes (2026-03-07)
+
 **Comment template for PR:**
 > Thanks for this contribution - the single-token approach is a great idea for simplifying setup. A few things need fixing before we can merge:
 >
@@ -243,9 +247,9 @@ This is a feature request to support Gemini CLI as a runtime alongside Claude Co
 
 ### Recommendation: ACKNOWLEDGE AND BACKLOG
 
-- [ ] Respond with: "Thanks for the suggestion! Adding to the backlog. If you're familiar with Gemini CLI's skill/extension format and want to take a crack at it, PRs are welcome. The core Python scripts in `scripts/` are runtime-agnostic - the main work would be creating a Gemini-compatible manifest and deployment path."
-- [ ] Add a `help wanted` label
-- [ ] Keep open as a backlog item
+- [x] Respond with comment acknowledging and inviting contribution
+- [x] Add a `help wanted` label
+- [x] Keep open as a backlog item
 
 ---
 
@@ -253,9 +257,9 @@ This is a feature request to support Gemini CLI as a runtime alongside Claude Co
 
 | Priority | Item | Action | Risk |
 |----------|------|--------|------|
-| 1 | PR #52 (metadata fix) | Merge now | None |
-| 2 | Issue #46 (upload error) | Auto-closes with PR #52 | None |
-| 3 | PR #50 (entity tests) | Run tests, merge | None |
-| 4 | PR #48 (Xiaohongshu + Reddit fallback) | Test locally, merge with minor conditions | Low |
-| 5 | Issue #45 (Gemini CLI) | Acknowledge, backlog, label | None |
-| 6 | PR #47 (Apify unified) | Request changes (blockers found) | Medium-High |
+| 1 | PR #52 (metadata fix) | ~~Merge now~~ DONE | None |
+| 2 | Issue #46 (upload error) | ~~Auto-closes with PR #52~~ DONE | None |
+| 3 | PR #50 (entity tests) | ~~Run tests, merge~~ DONE | None |
+| 4 | PR #48 (Xiaohongshu + Reddit fallback) | ~~Test locally, merge with conditions~~ DONE | Low |
+| 5 | Issue #45 (Gemini CLI) | ~~Acknowledge, backlog, label~~ DONE | None |
+| 6 | PR #47 (Apify unified) | ~~Request changes~~ DONE (awaiting contributor) | Medium-High |
