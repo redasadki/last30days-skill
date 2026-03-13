@@ -35,6 +35,8 @@ class TestDetectQueryType(unittest.TestCase):
         self.assertEqual(detect_query_type("how to deploy on Vercel"), "how_to")
         self.assertEqual(detect_query_type("tutorial for building MCP servers"), "how_to")
         self.assertEqual(detect_query_type("step by step Kubernetes setup"), "how_to")
+        self.assertEqual(detect_query_type("nano banana pro prompting"), "how_to")
+        self.assertEqual(detect_query_type("remotion animations for Claude Code"), "how_to")
 
     def test_comparison_queries(self):
         self.assertEqual(detect_query_type("cursor vs windsurf"), "comparison")
@@ -87,6 +89,9 @@ class TestIsSourceEnabled(unittest.TestCase):
     def test_tier2_sources_enabled(self):
         self.assertTrue(is_source_enabled("web", "product"))
         self.assertTrue(is_source_enabled("bluesky", "opinion"))
+        self.assertTrue(is_source_enabled("x", "how_to"))
+        self.assertTrue(is_source_enabled("youtube", "breaking_news"))
+        self.assertTrue(is_source_enabled("hn", "prediction"))
 
     def test_tier3_sources_disabled_by_default(self):
         self.assertFalse(is_source_enabled("instagram", "concept"))

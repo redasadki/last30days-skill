@@ -16,7 +16,8 @@ _OPINION_PATTERNS = re.compile(
     r"\b(worth it|thoughts on|opinion|review|experience with|recommend|should i|pros and cons|good or bad)\b", re.I
 )
 _HOWTO_PATTERNS = re.compile(
-    r"\b(how to|tutorial|step by step|setup|install|configure|deploy|migrate|implement|build a|create a)\b", re.I
+    r"\b(how to|tutorial|step by step|setup|install|configure|deploy|migrate|implement|build a|create a|prompting|prompts?|best practices|tips|examples|animation|animations)\b",
+    re.I,
 )
 _COMPARISON_PATTERNS = re.compile(
     r"\b(vs\.?|versus|compared to|comparison|better than|difference between|switch from)\b", re.I
@@ -62,10 +63,10 @@ SOURCE_TIERS = {
     "product":       {"tier1": {"reddit", "x", "youtube"}, "tier2": {"web", "tiktok"}},
     "concept":       {"tier1": {"reddit", "hn", "web"},     "tier2": {"youtube", "x"}},
     "opinion":       {"tier1": {"reddit", "x"},             "tier2": {"youtube", "bluesky"}},
-    "how_to":        {"tier1": {"youtube", "reddit", "hn"}, "tier2": {"web"}},
+    "how_to":        {"tier1": {"youtube", "reddit", "hn"}, "tier2": {"web", "x"}},
     "comparison":    {"tier1": {"reddit", "hn", "youtube"}, "tier2": {"x", "web"}},
-    "breaking_news": {"tier1": {"x", "reddit", "web"},      "tier2": {"hn", "bluesky"}},
-    "prediction":    {"tier1": {"polymarket", "x", "reddit"}, "tier2": {"web"}},
+    "breaking_news": {"tier1": {"x", "reddit", "web"},      "tier2": {"hn", "bluesky", "youtube"}},
+    "prediction":    {"tier1": {"polymarket", "x", "reddit"}, "tier2": {"web", "hn", "youtube"}},
 }
 
 # WebSearch penalty adjustment by query type.
