@@ -141,6 +141,34 @@ All agents reported back!
 
 ---
 
+## Save to Obsidian (mandatory)
+
+After displaying results to the user, **always** save the full research output to Obsidian:
+
+- **Folder:** `/Users/claw/ObsidianClaw/last30days/`
+- **Filename:** `YYYYMMDD.RESEARCH.Topic-Slug.md`
+  - Date = today's date
+  - Topic-Slug = kebab-case summary of the topic (e.g., `Higgsfield-Prompting-Techniques-Music-Videos`)
+- **YAML frontmatter:**
+  ```yaml
+  ---
+  type: research
+  date: YYYY-MM-DD
+  source: /last30days research (list platforms that returned results)
+  format: last30days
+  tags:
+    - relevant-tag-1
+    - relevant-tag-2
+  ---
+  ```
+- **Body:** the full "What I learned" synthesis, key patterns, and stats box. Include source attributions.
+- Do NOT save raw script output — save the synthesized, human-readable version.
+- If the script also produced raw source files, save those alongside with `-raw.md` suffix.
+
+This step is non-optional. Every /last30days research run produces an Obsidian note.
+
+---
+
 ## Follow-Up
 
 After research, you are an **EXPERT** on this topic.

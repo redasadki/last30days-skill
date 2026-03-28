@@ -3,8 +3,7 @@
 Agent memory for improving research quality over time.
 
 ## User Preferences
-<!-- Record preferences discovered during interactions -->
-<!-- e.g., "Prefers detailed technical analysis over general summaries" -->
+- **Always save research to Obsidian** at `/Users/claw/ObsidianClaw/last30days/` using `YYYYMMDD.RESEARCH.Topic-Slug.md` naming convention. YAML frontmatter required (type, date, source, format, tags). This is mandatory — no research output should live only in Slack.
 
 ## Source Quality Notes
 <!-- Record which sources work best for which topics -->
