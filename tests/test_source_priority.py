@@ -668,3 +668,70 @@ class TestBirdDisableBrowserCookiesEnvVar:
             assert 'BIRD_DISABLE_BROWSER_COOKIES' not in os.environ
         finally:
             os.environ.pop('BIRD_DISABLE_BROWSER_COOKIES', None)
+
+
+# ---------------------------------------------------------------------------
+# Tests: INCLUDE_SOURCES config override
+# ---------------------------------------------------------------------------
+
+class TestIncludeSourcesOverride:
+    """Test that INCLUDE_SOURCES forces sources on regardless of tier."""
+
+    def _simulate_source_decisions(self, config, query_type="breaking_news"):
+        """Simulate the source decision logic from last30days.py main flow.
+
+        Returns (search_run_tiktok, search_run_instagram) after tier + override.
+        """
+        from scripts.lib import query_type as qt
+
+        has_tiktok = env.is_tiktok_available(config)
+        has_instagram = env.is_instagram_available(config)
+
+        # Tier system decision
+        search_run_tiktok = has_tiktok and qt.is_source_enabled("tiktok", query_type)
+        search_run_instagram = has_instagram and qt.is_source_enabled("instagram", query_type)
+
+        # INCLUDE_SOURCES override (mirrors last30days.py logic)
+        _include_sources = {
+            s.strip().lower()
+            for s in config.get('INCLUDE_SOURCES', '').split(',')
+            if s.strip()
+        }
+        if _include_sources:
+            if 'tiktok' in _include_sources and has_tiktok:
+                if not search_run_tiktok:
+                    search_run_tiktok = True
+            if 'instagram' in _include_sources and has_instagram:
+                if not search_run_instagram:
+                    search_run_instagram = True
+
+        return search_run_tiktok, search_run_instagram
+
+    def test_include_sources_forces_tiktok_and_instagram_on(self):
+        """INCLUDE_SOURCES=tiktok,instagram + SC key + GENERAL query -> both forced on."""
+        config = _base_config(
+            SCRAPECREATORS_API_KEY="sc-key",
+            INCLUDE_SOURCES="tiktok,instagram",
+        )
+        run_tiktok, run_instagram = self._simulate_source_decisions(config, "breaking_news")
+        assert run_tiktok is True
+        assert run_instagram is True
+
+    def test_no_include_sources_tier_controls(self):
+        """No INCLUDE_SOURCES + SC key + GENERAL query -> tier system controls (both off)."""
+        config = _base_config(
+            SCRAPECREATORS_API_KEY="sc-key",
+        )
+        run_tiktok, run_instagram = self._simulate_source_decisions(config, "breaking_news")
+        # breaking_news tier doesn't include tiktok or instagram
+        assert run_tiktok is False
+        assert run_instagram is False
+
+    def test_include_sources_no_sc_key_still_off(self):
+        """INCLUDE_SOURCES=tiktok but no SC key -> TikTok still off (no backend)."""
+        config = _base_config(
+            INCLUDE_SOURCES="tiktok",
+        )
+        run_tiktok, run_instagram = self._simulate_source_decisions(config, "breaking_news")
+        assert run_tiktok is False
+        assert run_instagram is False

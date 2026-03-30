@@ -1735,6 +1735,18 @@ def main():
     search_run_tiktok = has_tiktok and qt.is_source_enabled("tiktok", query_type)
     search_run_instagram = has_instagram and qt.is_source_enabled("instagram", query_type)
     search_run_xiaohongshu = has_xiaohongshu
+
+    # INCLUDE_SOURCES override: force specific sources on regardless of tier
+    _include_sources = {s.strip().lower() for s in config.get('INCLUDE_SOURCES', '').split(',') if s.strip()}
+    if _include_sources:
+        if 'tiktok' in _include_sources and has_tiktok:
+            if not search_run_tiktok:
+                sys.stderr.write("[Config] INCLUDE_SOURCES override: forcing tiktok\n")
+                search_run_tiktok = True
+        if 'instagram' in _include_sources and has_instagram:
+            if not search_run_instagram:
+                sys.stderr.write("[Config] INCLUDE_SOURCES override: forcing instagram\n")
+                search_run_instagram = True
     if args.search:
         search_sources = parse_search_flag(args.search)
         has_reddit = "reddit" in search_sources

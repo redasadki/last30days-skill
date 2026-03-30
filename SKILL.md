@@ -112,7 +112,17 @@ Options:
 - "I have a key — let me paste it" — accept the key, write to .env
 - "Skip for now — start researching" — proceed without ScrapeCreators
 
-**After ScrapeCreators modal (or skip), show the first research topic modal:**
+**After SC key is saved (not if skipped), show the TikTok/Instagram opt-in:**
+
+Your ScrapeCreators key also powers TikTok and Instagram search. Want those on for every research run? (Each additional source uses a ScrapeCreators call per search.)
+
+**Call AskUserQuestion:**
+Question: "Also search TikTok and Instagram?"
+Options:
+- "Yes, search everything — TikTok + Instagram on every run" — append `INCLUDE_SOURCES=tiktok,instagram` to ~/.config/last30days/.env. Confirm: "All set — Reddit comments, TikTok, and Instagram will run on every search."
+- "Just Reddit comments for now" — don't write the flag. Confirm: "Got it — Reddit comments are on. TikTok and Instagram will kick in automatically for relevant topics like product reviews and trends. Add INCLUDE_SOURCES=tiktok,instagram to your .env anytime to force them on."
+
+**After TikTok/Instagram opt-in (or SC skip), show the first research topic modal:**
 
 **Call AskUserQuestion:**
 Question: "What do you want to research first?"
