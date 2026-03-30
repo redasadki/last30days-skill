@@ -417,120 +417,190 @@ class ProgressDisplay:
         sys.stderr.flush()
 
 
-def show_diagnostic_banner(diag: dict):
-    """Show pre-flight source status banner when sources are missing.
+def _build_status_banner(diag: dict) -> list[str]:
+    """Build the status banner lines (plain text, no ANSI).
+
+    Returns a list of strings, each being a line of the banner box.
 
     Args:
-        diag: Dict from env diagnostics with keys:
-            openai, xai, x_source, bird_installed, bird_authenticated,
-            bird_username, youtube, web_search_backend
+        diag: Dict with keys:
+            setup_complete, reddit_source, x_source, x_method,
+            youtube, tiktok, instagram, hackernews, polymarket,
+            bluesky, truthsocial, xiaohongshu, scrapecreators,
+            web_search_backend
     """
-    has_openai = diag.get("openai", False)
-    has_reddit_public = diag.get("reddit_public", False)
-    has_reddit = has_openai or has_reddit_public
-    has_x = diag.get("x_source") is not None
-    has_youtube = diag.get("youtube", False)
-    has_xiaohongshu = diag.get("xiaohongshu", False)
-    has_web = diag.get("web_search_backend") is not None
+    setup_complete = diag.get("setup_complete", False)
+    has_sc = diag.get("scrapecreators", False)
 
-    # If everything is available, no banner needed
-    if has_reddit and has_x and has_youtube and has_web:
-        return
+    # --- Build active sources list: (label, method_label) ---
+    active: list[str] = []
 
-    lines = []
+    # Reddit — always available; what matters to users is comments or not
+    reddit_src = diag.get("reddit_source")
+    if reddit_src == "scrapecreators":
+        active.append("Reddit (with comments)")
+    else:
+        active.append("Reddit (threads only)")
+
+    # X/Twitter
+    x_source = diag.get("x_source")
+    x_method = diag.get("x_method")
+    if x_source:
+        if x_method and x_method.startswith("browser-"):
+            browser = x_method.split("-", 1)[1].capitalize()
+            active.append(f"X ({browser})")
+        elif x_method == "env":
+            active.append("X (env)")
+        elif x_method == "api":
+            active.append("X (xAI)")
+        else:
+            active.append("X")
+
+    # YouTube
+    if diag.get("youtube"):
+        active.append("YouTube")
+
+    # HN — always available
+    if diag.get("hackernews"):
+        active.append("HN")
+
+    # Polymarket — always available
+    if diag.get("polymarket"):
+        active.append("Polymarket")
+
+    # TikTok (requires SC or Apify)
+    if diag.get("tiktok"):
+        active.append("TikTok")
+
+    # Instagram (requires SC)
+    if diag.get("instagram"):
+        active.append("Instagram")
+
+    # Bluesky
+    if diag.get("bluesky"):
+        active.append("Bluesky")
+
+    # Truth Social
+    if diag.get("truthsocial"):
+        active.append("Truth Social")
+
+    # Xiaohongshu
+    if diag.get("xiaohongshu"):
+        active.append("Xiaohongshu")
+
+    # --- Format active sources into wrapped lines ---
+    BOX_INNER = 53  # characters inside the box (between │ and │)
+    PREFIX = "  "    # 2-space indent inside box
+
+    def _wrap_sources(sources: list[str]) -> list[str]:
+        """Wrap source labels into lines that fit the box width."""
+        result_lines: list[str] = []
+        current = PREFIX
+        for i, s in enumerate(sources):
+            token = f"✅ {s}"
+            sep = "  " if current != PREFIX else ""
+            if len(current) + len(sep) + len(token) > BOX_INNER:
+                result_lines.append(current)
+                current = PREFIX + token
+            else:
+                current += sep + token
+        if current.strip():
+            result_lines.append(current)
+        return result_lines
+
+    source_lines = _wrap_sources(active)
+
+    # --- Title ---
+    if not setup_complete:
+        title = "/last30days v3.0 — First Run"
+    else:
+        title = "/last30days v3.0 — Source Status"
+
+    # --- Build upgrade suggestions ---
+    suggestions: list[str] = []
+
+    if not setup_complete:
+        suggestions.append("Run /last30days setup to unlock more sources")
+    else:
+        # Recommend ScrapeCreators if missing
+        if not has_sc:
+            suggestions.append("⭐ Add SCRAPECREATORS_API_KEY for Reddit comments")
+            suggestions.append("   + TikTok + Instagram")
+            suggestions.append("   100 free calls, no CC — scrapecreators.com (no affiliation)")
+
+    # --- Assemble box lines ---
+    # Collect all content lines, then determine box width dynamically.
+    content: list[str] = []
+    content.append(f" {title}")
+    content.append("")  # blank line
+
+    for sl in source_lines:
+        content.append(sl)
+
+    if suggestions:
+        content.append("")  # blank line
+        for sg in suggestions:
+            content.append(f"  {sg}")
+
+    content.append("")  # blank line
+    content.append("  Config: ~/.config/last30days/.env")
+
+    # Width = widest content line + 1 for right margin
+    width = max(len(line) for line in content) + 1
+    if width < 53:
+        width = 53
+
+    lines: list[str] = []
+    lines.append("\u250c" + "\u2500" * width + "\u2510")
+    for c in content:
+        lines.append("\u2502" + c.ljust(width) + "\u2502")
+    lines.append("\u2514" + "\u2500" * width + "\u2518")
+
+    return lines
+
+
+def _colorize_banner(lines: list[str]) -> list[str]:
+    """Apply ANSI colors to plain-text banner lines for TTY output."""
+    colored: list[str] = []
+    for line in lines:
+        if line.startswith("\u250c") or line.startswith("\u2514"):
+            colored.append(f"{Colors.DIM}{line}{Colors.RESET}")
+        elif line.startswith("\u2502"):
+            inner = line[1:-1]  # strip box chars on both sides
+            inner_width = len(inner)
+            # Colorize check marks green, star yellow
+            inner = inner.replace("\u2705", f"{Colors.GREEN}\u2705{Colors.RESET}")
+            inner = inner.replace("\u2b50", f"{Colors.YELLOW}\u2b50{Colors.RESET}")
+            # Bold the title line
+            if "/last30days v3.0" in inner:
+                stripped = inner.strip()
+                inner = f" {Colors.BOLD}{stripped}{Colors.RESET}"
+                # Re-pad to original width (ANSI codes are zero-width)
+                visible_len = 1 + len(stripped)
+                inner = inner + " " * max(0, inner_width - visible_len)
+            colored.append(f"{Colors.DIM}\u2502{Colors.RESET}{inner}{Colors.DIM}\u2502{Colors.RESET}")
+        else:
+            colored.append(line)
+    return colored
+
+
+def show_diagnostic_banner(diag: dict):
+    """Show pre-flight source status banner.
+
+    Free-first design: leads with what's working (✅), not what's broken.
+    Shows upgrade suggestions only when relevant.
+
+    Args:
+        diag: Dict with keys:
+            setup_complete, reddit_source, x_source, x_method,
+            youtube, tiktok, instagram, hackernews, polymarket,
+            bluesky, truthsocial, xiaohongshu, scrapecreators,
+            web_search_backend
+    """
+    lines = _build_status_banner(diag)
 
     if IS_TTY:
-        lines.append(f"{Colors.DIM}┌─────────────────────────────────────────────────────┐{Colors.RESET}")
-        lines.append(f"{Colors.DIM}│{Colors.RESET} {Colors.BOLD}/last30days v2.1 — Source Status{Colors.RESET}                    {Colors.DIM}│{Colors.RESET}")
-        lines.append(f"{Colors.DIM}│{Colors.RESET}                                                     {Colors.DIM}│{Colors.RESET}")
-
-        # Reddit
-        if has_openai:
-            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.GREEN}✅ Reddit{Colors.RESET}    — OpenAI/Codex auth found             {Colors.DIM}│{Colors.RESET}")
-        elif has_reddit_public:
-            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.GREEN}✅ Reddit{Colors.RESET}    — Public Reddit search (no key)       {Colors.DIM}│{Colors.RESET}")
-        else:
-            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.RED}❌ Reddit{Colors.RESET}    — No OPENAI_API_KEY                    {Colors.DIM}│{Colors.RESET}")
-            lines.append(f"{Colors.DIM}│{Colors.RESET}     └─ Add to ~/.config/last30days/.env            {Colors.DIM}│{Colors.RESET}")
-
-        # X/Twitter
-        if has_x:
-            source = diag.get("x_source", "")
-            username = diag.get("bird_username", "")
-            label = f"Bird ({username})" if source == "bird" and username else source.upper()
-            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.GREEN}✅ X/Twitter{Colors.RESET} — {label}                          {Colors.DIM}│{Colors.RESET}")
-        else:
-            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.RED}❌ X/Twitter{Colors.RESET} — No X auth or fallback key        {Colors.DIM}│{Colors.RESET}")
-            if diag.get("bird_installed"):
-                lines.append(f"{Colors.DIM}│{Colors.RESET}     └─ Add AUTH_TOKEN/CT0 or XAI_API_KEY      {Colors.DIM}│{Colors.RESET}")
-            else:
-                lines.append(f"{Colors.DIM}│{Colors.RESET}     └─ Needs Node.js 22+ (Bird is bundled)           {Colors.DIM}│{Colors.RESET}")
-
-        # YouTube
-        if has_youtube:
-            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.GREEN}✅ YouTube{Colors.RESET}   — yt-dlp found                      {Colors.DIM}│{Colors.RESET}")
-        else:
-            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.RED}❌ YouTube{Colors.RESET}   — yt-dlp not installed                {Colors.DIM}│{Colors.RESET}")
-            lines.append(f"{Colors.DIM}│{Colors.RESET}     └─ Fix: brew install yt-dlp (free)                {Colors.DIM}│{Colors.RESET}")
-
-        # Xiaohongshu
-        if has_xiaohongshu:
-            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.GREEN}✅ Xiaohongshu{Colors.RESET} — API connected + logged in         {Colors.DIM}│{Colors.RESET}")
-        else:
-            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.YELLOW}⚡ Xiaohongshu{Colors.RESET} — API not connected/logged in      {Colors.DIM}│{Colors.RESET}")
-
-        # Web
-        if has_web:
-            backend = diag.get("web_search_backend", "")
-            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.GREEN}✅ Web{Colors.RESET}       — {backend} API                       {Colors.DIM}│{Colors.RESET}")
-        else:
-            lines.append(f"{Colors.DIM}│{Colors.RESET}  {Colors.YELLOW}⚡ Web{Colors.RESET}       — Using assistant's search tool       {Colors.DIM}│{Colors.RESET}")
-
-        lines.append(f"{Colors.DIM}│{Colors.RESET}                                                     {Colors.DIM}│{Colors.RESET}")
-        lines.append(f"{Colors.DIM}│{Colors.RESET}  Config: {Colors.BOLD}~/.config/last30days/.env{Colors.RESET}                  {Colors.DIM}│{Colors.RESET}")
-        lines.append(f"{Colors.DIM}└─────────────────────────────────────────────────────┘{Colors.RESET}")
-    else:
-        # Plain text for non-TTY (Claude Code / Codex)
-        lines.append("┌─────────────────────────────────────────────────────┐")
-        lines.append("│ /last30days v2.1 — Source Status                    │")
-        lines.append("│                                                     │")
-
-        if has_openai:
-            lines.append("│  ✅ Reddit    — OpenAI/Codex auth found             │")
-        elif has_reddit_public:
-            lines.append("│  ✅ Reddit    — Public Reddit search (no key)       │")
-        else:
-            lines.append("│  ❌ Reddit    — No OPENAI_API_KEY                    │")
-            lines.append("│     └─ Add to ~/.config/last30days/.env            │")
-
-        if has_x:
-            lines.append("│  ✅ X/Twitter — available                            │")
-        else:
-            lines.append("│  ❌ X/Twitter — No X auth or fallback key          │")
-            if diag.get("bird_installed"):
-                lines.append("│     └─ Add AUTH_TOKEN/CT0 or XAI_API_KEY           │")
-            else:
-                lines.append("│     └─ Needs Node.js 22+ (Bird is bundled)           │")
-
-        if has_youtube:
-            lines.append("│  ✅ YouTube   — yt-dlp found                        │")
-        else:
-            lines.append("│  ❌ YouTube   — yt-dlp not installed                │")
-            lines.append("│     └─ Fix: brew install yt-dlp (free)                │")
-
-        if has_xiaohongshu:
-            lines.append("│  ✅ Xiaohongshu — API connected + logged in         │")
-        else:
-            lines.append("│  ⚡ Xiaohongshu — API not connected/logged in       │")
-
-        if has_web:
-            lines.append("│  ✅ Web       — API search available                │")
-        else:
-            lines.append("│  ⚡ Web       — Using assistant's search tool       │")
-
-        lines.append("│                                                     │")
-        lines.append("│  Config: ~/.config/last30days/.env                  │")
-        lines.append("└─────────────────────────────────────────────────────┘")
+        lines = _colorize_banner(lines)
 
     sys.stderr.write("\n".join(lines) + "\n\n")
     sys.stderr.flush()

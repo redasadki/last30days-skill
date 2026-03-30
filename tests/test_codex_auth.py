@@ -124,7 +124,8 @@ class TestLoadCodexAuth(unittest.TestCase):
 
 class TestGetAvailableSourcesWithAuth(unittest.TestCase):
 
-    def test_codex_auth_ok_counts_as_openai(self):
+    @patch("lib.bird_x.is_bird_installed", return_value=False)
+    def test_codex_auth_ok_counts_as_openai(self, _mock_bird):
         config = {
             "OPENAI_API_KEY": "codex-token",
             "OPENAI_AUTH_STATUS": "ok",
@@ -133,7 +134,8 @@ class TestGetAvailableSourcesWithAuth(unittest.TestCase):
         result = env.get_available_sources(config)
         self.assertIn("reddit", result)
 
-    def test_codex_auth_expired_not_counted(self):
+    @patch("lib.bird_x.is_bird_installed", return_value=False)
+    def test_codex_auth_expired_not_counted(self, _mock_bird):
         config = {
             "OPENAI_API_KEY": None,
             "OPENAI_AUTH_STATUS": "expired",

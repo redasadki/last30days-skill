@@ -223,7 +223,9 @@ class TestXSourceSelection(unittest.TestCase):
             'can_install': False,
         }
 
-        with patch('lib.bird_x.get_bird_status', return_value=bird_status):
+        with patch('lib.bird_x.get_bird_status', return_value=bird_status), \
+             patch('lib.bird_x.is_bird_installed', return_value=True), \
+             patch('lib.bird_x.is_bird_authenticated', return_value=None):
             status = env.get_x_source_status(config)
 
         self.assertIsNone(status['source'])

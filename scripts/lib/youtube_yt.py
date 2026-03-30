@@ -15,6 +15,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -255,15 +257,114 @@ def _clean_vtt(vtt_text: str) -> str:
     return re.sub(r'\s+', ' ', ' '.join(unique)).strip()
 
 
-def fetch_transcript(video_id: str, temp_dir: str) -> Optional[str]:
-    """Fetch auto-generated transcript for a YouTube video.
+_YT_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+
+def _fetch_transcript_direct(video_id: str, timeout: int = 30) -> Optional[str]:
+    """Fetch YouTube transcript via direct HTTP without yt-dlp.
+
+    Scrapes the watch page HTML for the captions track URL in
+    ytInitialPlayerResponse, then fetches the VTT subtitle file.
+
+    Args:
+        video_id: YouTube video ID
+        timeout: HTTP request timeout in seconds
+
+    Returns:
+        Raw VTT text, or None if captions are unavailable.
+    """
+    watch_url = f"https://www.youtube.com/watch?v={video_id}"
+    headers = {
+        "User-Agent": _YT_USER_AGENT,
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
+    # Step 1: Fetch the watch page HTML
+    req = urllib.request.Request(watch_url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            html = resp.read().decode("utf-8", errors="replace")
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError, TimeoutError) as exc:
+        _log(f"Direct transcript: failed to fetch watch page for {video_id}: {exc}")
+        return None
+
+    # Step 2: Extract captions URL from ytInitialPlayerResponse
+    # YouTube embeds this as a JS variable in the page HTML
+    match = re.search(
+        r'ytInitialPlayerResponse\s*=\s*(\{.+?\})\s*;(?:\s*var\s|\s*<\/script>)',
+        html,
+    )
+    if not match:
+        # Fallback: try the JSON embedded in the script tag
+        match = re.search(
+            r'var\s+ytInitialPlayerResponse\s*=\s*(\{.+?\})\s*;',
+            html,
+        )
+    if not match:
+        _log(f"Direct transcript: no ytInitialPlayerResponse found for {video_id}")
+        return None
+
+    try:
+        player_response = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        _log(f"Direct transcript: failed to parse ytInitialPlayerResponse for {video_id}")
+        return None
+
+    # Navigate to caption tracks
+    captions = player_response.get("captions", {})
+    renderer = captions.get("playerCaptionsTracklistRenderer", {})
+    caption_tracks = renderer.get("captionTracks", [])
+
+    if not caption_tracks:
+        _log(f"Direct transcript: no caption tracks for {video_id}")
+        return None
+
+    # Find English track (prefer exact 'en', then any en variant, then first track)
+    base_url = None
+    for track in caption_tracks:
+        lang = track.get("languageCode", "")
+        if lang == "en":
+            base_url = track.get("baseUrl")
+            break
+    if not base_url:
+        for track in caption_tracks:
+            lang = track.get("languageCode", "")
+            if lang.startswith("en"):
+                base_url = track.get("baseUrl")
+                break
+    if not base_url:
+        # Fall back to first available track
+        base_url = caption_tracks[0].get("baseUrl")
+    if not base_url:
+        _log(f"Direct transcript: no baseUrl in caption tracks for {video_id}")
+        return None
+
+    # Step 3: Fetch the VTT subtitle file
+    sep = "&" if "?" in base_url else "?"
+    vtt_url = f"{base_url}{sep}fmt=vtt"
+    vtt_req = urllib.request.Request(vtt_url, headers=headers)
+    try:
+        with urllib.request.urlopen(vtt_req, timeout=timeout) as resp:
+            vtt_text = resp.read().decode("utf-8", errors="replace")
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError, TimeoutError) as exc:
+        _log(f"Direct transcript: failed to fetch VTT for {video_id}: {exc}")
+        return None
+
+    if not vtt_text or not vtt_text.strip():
+        return None
+
+    return vtt_text
+
+
+def _fetch_transcript_ytdlp(video_id: str, temp_dir: str) -> Optional[str]:
+    """Fetch transcript using yt-dlp (original implementation).
 
     Args:
         video_id: YouTube video ID
         temp_dir: Temporary directory for subtitle files
 
     Returns:
-        Plaintext transcript string, or None if no captions available.
+        Raw VTT text, or None if no captions available.
     """
     cmd = [
         "yt-dlp",
@@ -311,11 +412,35 @@ def fetch_transcript(video_id: str, temp_dir: str) -> Optional[str]:
             return None
 
     try:
-        raw = vtt_path.read_text(encoding="utf-8", errors="replace")
+        return vtt_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
 
-    transcript = _clean_vtt(raw)
+
+def fetch_transcript(video_id: str, temp_dir: str) -> Optional[str]:
+    """Fetch auto-generated transcript for a YouTube video.
+
+    Uses yt-dlp when available (preferred, more robust). Falls back to
+    direct HTTP transcript fetching when yt-dlp is not installed.
+
+    Args:
+        video_id: YouTube video ID
+        temp_dir: Temporary directory for subtitle files
+
+    Returns:
+        Plaintext transcript string, or None if no captions available.
+    """
+    raw_vtt = None
+    if is_ytdlp_installed():
+        raw_vtt = _fetch_transcript_ytdlp(video_id, temp_dir)
+    else:
+        _log("yt-dlp not installed, using direct HTTP transcript fetch")
+        raw_vtt = _fetch_transcript_direct(video_id)
+
+    if not raw_vtt:
+        return None
+
+    transcript = _clean_vtt(raw_vtt)
 
     # Truncate to max words
     words = transcript.split()

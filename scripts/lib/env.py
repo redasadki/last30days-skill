@@ -2,11 +2,38 @@
 
 import base64
 import json
+import logging
 import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Dict, Any, Literal
+from typing import Optional, Dict, Any, List, Literal
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Cookie domain registry: maps source names to browser cookie extraction params.
+# Each entry: (domain, cookie_names, config_key_mapping)
+# config_key_mapping: {cookie_name: config_key} so we know which config key
+# each extracted cookie should populate.
+# ---------------------------------------------------------------------------
+COOKIE_DOMAINS: Dict[str, Dict[str, Any]] = {
+    "x": {
+        "domain": ".x.com",
+        "cookies": ["auth_token", "ct0"],
+        "mapping": {
+            "auth_token": "AUTH_TOKEN",
+            "ct0": "CT0",
+        },
+    },
+    "truthsocial": {
+        "domain": ".truthsocial.com",
+        "cookies": ["_session_id"],
+        "mapping": {
+            "_session_id": "TRUTHSOCIAL_TOKEN",
+        },
+    },
+}
 
 # Allow override via environment variable for testing
 # Set LAST30DAYS_CONFIG_DIR="" for clean/no-config mode
@@ -212,6 +239,87 @@ def _find_project_env() -> Optional[Path]:
     return None
 
 
+def extract_browser_credentials(config: Dict[str, Any]) -> Dict[str, str]:
+    """Extract credentials from browser cookies for sources that need them.
+
+    Checks the FROM_BROWSER config key to decide whether/how to extract:
+      - 'auto': try browsers in platform order
+      - 'firefox', 'chrome', 'safari': try only that browser
+      - 'off': skip extraction entirely
+
+    If SETUP_COMPLETE is not set AND FROM_BROWSER is not explicitly set,
+    defaults to 'off' (wizard hasn't run yet — no extraction without consent).
+    If SETUP_COMPLETE is set and FROM_BROWSER is not set, defaults to 'auto'.
+
+    Explicit env var/config values always take priority over extracted cookies.
+
+    Returns:
+        Dict of {config_key: value} for credentials discovered from cookies.
+    """
+    setup_complete = config.get("SETUP_COMPLETE")
+    from_browser = config.get("FROM_BROWSER")
+
+    # Determine effective browser setting
+    if from_browser is None:
+        if setup_complete:
+            from_browser = "auto"
+        else:
+            from_browser = "off"
+
+    from_browser = from_browser.lower().strip() if isinstance(from_browser, str) else "off"
+
+    if from_browser == "off":
+        return {}
+
+    # Lazy import to avoid loading cookie_extract at module level
+    try:
+        from . import cookie_extract
+    except Exception:
+        logger.debug("cookie_extract module not available")
+        return {}
+
+    credentials: Dict[str, str] = {}
+
+    for source_name, spec in COOKIE_DOMAINS.items():
+        domain = spec["domain"]
+        cookie_names: List[str] = spec["cookies"]
+        mapping: Dict[str, str] = spec["mapping"]
+
+        # Skip if ALL mapped config keys already have values
+        all_present = all(config.get(config_key) for config_key in mapping.values())
+        if all_present:
+            logger.debug(
+                "Skipping cookie extraction for %s: credentials already set",
+                source_name,
+            )
+            continue
+
+        try:
+            result = cookie_extract.extract_cookies_with_source(from_browser, domain, cookie_names)
+        except Exception as exc:
+            logger.debug(
+                "Cookie extraction failed for %s: %s", source_name, exc
+            )
+            continue
+
+        if result is None:
+            continue
+
+        cookies, browser_name = result
+        filled_any = False
+        for cookie_name, config_key in mapping.items():
+            # Only fill in keys not already present
+            if not config.get(config_key) and cookie_name in cookies:
+                credentials[config_key] = cookies[cookie_name]
+                filled_any = True
+
+        # Track which browser provided the credentials for this source
+        if filled_any:
+            credentials[f"__{source_name.upper()}_BROWSER"] = browser_name
+
+    return credentials
+
+
 def get_config() -> Dict[str, Any]:
     """Load configuration from multiple sources.
 
@@ -219,6 +327,7 @@ def get_config() -> Dict[str, Any]:
       1. Environment variables (os.environ)
       2. .claude/last30days.env (per-project config)
       3. ~/.config/last30days/.env (global config)
+      4. Browser cookies (only fills in missing keys)
     """
     # Load from global config file
     file_env = load_env_file(CONFIG_FILE) if CONFIG_FILE else {}
@@ -249,6 +358,7 @@ def get_config() -> Dict[str, Any]:
         ('OPENROUTER_API_KEY', None),
         ('PARALLEL_API_KEY', None),
         ('BRAVE_API_KEY', None),
+        ('EXA_API_KEY', None),
         ('XIAOHONGSHU_API_BASE', None),
         ('GEMINI_MODEL', None),
         ('OPENAI_MODEL_POLICY', 'auto'),
@@ -262,10 +372,30 @@ def get_config() -> Dict[str, Any]:
         ('BSKY_HANDLE', None),
         ('BSKY_APP_PASSWORD', None),
         ('TRUTHSOCIAL_TOKEN', None),
+        ('FROM_BROWSER', None),
+        ('SETUP_COMPLETE', None),
     ]
 
     for key, default in keys:
         config[key] = os.environ.get(key) or merged_env.get(key, default)
+
+    # Inject browser cookies for any credentials not already set
+    browser_creds = extract_browser_credentials(config)
+    for key, value in browser_creds.items():
+        if not config.get(key):
+            config[key] = value
+
+    # Track AUTH_TOKEN source for status reporting
+    if config.get('AUTH_TOKEN'):
+        if os.environ.get('AUTH_TOKEN') or merged_env.get('AUTH_TOKEN'):
+            config['_AUTH_TOKEN_SOURCE'] = 'env'
+        elif browser_creds.get('AUTH_TOKEN'):
+            browser_name = browser_creds.get('__X_BROWSER', 'unknown')
+            config['_AUTH_TOKEN_SOURCE'] = f'browser-{browser_name}'
+        else:
+            config['_AUTH_TOKEN_SOURCE'] = 'env'  # fallback
+    else:
+        config['_AUTH_TOKEN_SOURCE'] = None
 
     # Track which config source was used
     if project_env_path:
@@ -314,14 +444,19 @@ def get_reddit_source(config: Dict[str, Any]) -> Optional[str]:
 def get_available_sources(config: Dict[str, Any]) -> str:
     """Determine which sources are available.
 
+    X is available if ANY auth method works: AUTH_TOKEN/CT0 (env or cookies),
+    XAI_API_KEY, or Bird installed+authenticated.
+    Reddit is always available (public JSON fallback).
+    HN and Polymarket are always available.
+    YouTube available if yt-dlp installed.
+
     Returns: 'all', 'both', 'reddit', 'reddit-web', 'x', 'x-web', 'web', or 'none'
     """
-    # Reddit is available via public JSON fallback even without OpenAI auth.
     has_reddit = True
-    has_xai = bool(config.get('XAI_API_KEY'))
+    has_x = get_x_source(config) is not None
     has_web = has_web_search_keys(config)
 
-    if has_reddit and has_xai:
+    if has_reddit and has_x:
         return 'all' if has_web else 'both'
     elif has_reddit:
         return 'reddit-web' if has_web else 'reddit'
@@ -330,16 +465,18 @@ def get_available_sources(config: Dict[str, Any]) -> str:
 
 def has_web_search_keys(config: Dict[str, Any]) -> bool:
     """Check if any web search API keys are configured."""
-    return bool(config.get('OPENROUTER_API_KEY') or config.get('PARALLEL_API_KEY') or config.get('BRAVE_API_KEY'))
+    return bool(config.get('EXA_API_KEY') or config.get('OPENROUTER_API_KEY') or config.get('PARALLEL_API_KEY') or config.get('BRAVE_API_KEY'))
 
 
 def get_web_search_source(config: Dict[str, Any]) -> Optional[str]:
     """Determine the best available web search backend.
 
-    Priority: Parallel AI > Brave > OpenRouter/Sonar Pro
+    Priority: Exa (free) > Parallel AI > Brave > OpenRouter/Sonar Pro
 
-    Returns: 'parallel', 'brave', 'openrouter', or None
+    Returns: 'exa', 'parallel', 'brave', 'openrouter', or None
     """
+    if config.get('EXA_API_KEY'):
+        return 'exa'
     if config.get('PARALLEL_API_KEY'):
         return 'parallel'
     if config.get('BRAVE_API_KEY'):
@@ -441,9 +578,13 @@ def validate_sources(requested: str, available: str, include_web: bool = False) 
 def get_x_source(config: Dict[str, Any]) -> Optional[str]:
     """Determine the best available X/Twitter source.
 
-    Priority: Bird (free) → xAI (paid API)
+    Priority chain:
+      1. AUTH_TOKEN/CT0 from env var or .env file → Bird with method "env"
+      2. AUTH_TOKEN/CT0 from browser cookie extraction → Bird with method "browser-{browser}"
+      3. XAI_API_KEY → xAI with method "api"
+      4. None
 
-    Keep X selection limited to documented, verified search backends.
+    Use get_x_source_with_method() to also get the method string.
 
     Args:
         config: Configuration dict from get_config()
@@ -453,20 +594,58 @@ def get_x_source(config: Dict[str, Any]) -> Optional[str]:
         'xai' if XAI_API_KEY is configured,
         None if no X source available.
     """
-    # Import here to avoid circular dependency
+    source, _method = get_x_source_with_method(config)
+    return source
+
+
+def get_x_source_with_method(config: Dict[str, Any]) -> tuple[Optional[str], Optional[str]]:
+    """Determine the best available X/Twitter source and auth method.
+
+    Priority chain:
+      1. AUTH_TOKEN/CT0 (env var or .env) → Bird with method "env"
+      2. AUTH_TOKEN/CT0 (browser cookies) → Bird with method "browser-{browser}"
+      3. XAI_API_KEY → xAI with method "api"
+      4. None
+
+    Args:
+        config: Configuration dict from get_config()
+
+    Returns:
+        Tuple of (source, method) where source is 'bird', 'xai', or None
+        and method is 'env', 'browser-chrome', 'browser-firefox', 'browser-safari', 'api', or None.
+    """
     from . import bird_x
 
-    # Check Bird first (free option)
+    setup_complete = config.get('SETUP_COMPLETE')
+
+    # Check Bird first (free option — uses AUTH_TOKEN/CT0 from any source)
     if bird_x.is_bird_installed():
-        username = bird_x.is_bird_authenticated()
-        if username:
-            return 'bird'
+        auth_source = config.get('_AUTH_TOKEN_SOURCE')
+
+        # If SETUP_COMPLETE is not set, only allow explicit env var credentials.
+        # Do NOT call is_bird_authenticated() for browser-cookie probing —
+        # that requires user consent via the setup wizard.
+        if not setup_complete:
+            # Explicit AUTH_TOKEN from env var / .env file is always allowed
+            if auth_source == 'env' and config.get('AUTH_TOKEN'):
+                username = bird_x.is_bird_authenticated()
+                if username:
+                    return 'bird', 'env'
+        else:
+            # SETUP_COMPLETE is set — normal flow, probe cookies if needed
+            username = bird_x.is_bird_authenticated()
+            if username:
+                if auth_source and auth_source.startswith('browser-'):
+                    method = auth_source  # e.g. "browser-firefox"
+                else:
+                    method = 'env'
+                return 'bird', method
 
     # Fall back to xAI if key exists
     if config.get('XAI_API_KEY'):
-        return 'xai'
+        return 'xai', 'api'
 
-    return None
+    return None, None
 
 
 def is_ytdlp_available() -> bool:
@@ -576,24 +755,49 @@ def get_x_source_status(config: Dict[str, Any]) -> Dict[str, Any]:
     """Get detailed X source status for UI decisions.
 
     Returns:
-        Dict with keys: source, bird_installed, bird_authenticated,
+        Dict with keys: source, method, bird_installed, bird_authenticated,
         bird_username, xai_available, can_install_bird
+
+    The ``method`` field indicates HOW the active source is authenticated:
+      - "env" — AUTH_TOKEN came from an env var or .env file
+      - "browser-chrome", "browser-firefox", "browser-safari" — from cookie extraction
+      - "api" — using xAI API key
+      - None — no X source available
     """
     from . import bird_x
 
-    bird_status = bird_x.get_bird_status()
+    setup_complete = config.get('SETUP_COMPLETE')
     xai_available = bool(config.get('XAI_API_KEY'))
 
-    # Determine active source
-    if bird_status["authenticated"]:
-        source = 'bird'
-    elif xai_available:
-        source = 'xai'
-    else:
-        source = None
+    if not setup_complete:
+        # Before consent: do NOT call get_bird_status() which probes cookies.
+        # Only check if Bird is installed (no cookie probing) and use the
+        # gated get_x_source_with_method() which blocks cookie detection.
+        bird_installed = bird_x.is_bird_installed()
+        source, method = get_x_source_with_method(config)
+
+        # Bird "authenticated" only if get_x_source_with_method found explicit creds
+        bird_authenticated = (source == 'bird')
+
+        return {
+            "source": source,
+            "method": method,
+            "bird_installed": bird_installed,
+            "bird_authenticated": bird_authenticated,
+            "bird_username": None if not bird_authenticated else "env AUTH_TOKEN",
+            "xai_available": xai_available,
+            "can_install_bird": True,
+        }
+
+    # SETUP_COMPLETE is set — normal flow
+    bird_status = bird_x.get_bird_status()
+
+    # Use the unified resolution function for source + method
+    source, method = get_x_source_with_method(config)
 
     return {
         "source": source,
+        "method": method,
         "bird_installed": bird_status["installed"],
         "bird_authenticated": bird_status["authenticated"],
         "bird_username": bird_status["username"],

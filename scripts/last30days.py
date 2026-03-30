@@ -149,17 +149,20 @@ from lib import (
     normalize,
     openai_reddit,
     reddit,
+    reddit_public,
     reddit_enrich,
     render,
     schema,
     score,
     scrapecreators_x,
+    setup_wizard,
     ui,
     tiktok,
     instagram,
     websearch,
     xai_x,
     youtube_yt,
+    quality_nudge,
     query_type as qt,
 )
 
@@ -184,8 +187,10 @@ def _search_reddit(
 ) -> tuple:
     """Search Reddit (runs in thread).
 
-    Uses ScrapeCreators when SCRAPECREATORS_API_KEY is available (preferred).
-    Falls back to OpenAI Responses API otherwise.
+    Hierarchy:
+    1. ScrapeCreators (if SCRAPECREATORS_API_KEY exists) — premium, best quality
+    2. Public Reddit JSON (always available) — free, good for thread discovery
+    3. OpenAI Responses API — legacy fallback for backwards compatibility
 
     Returns:
         Tuple of (reddit_items, raw_response, error, used_scrapecreators)
@@ -199,7 +204,7 @@ def _search_reddit(
     if mock:
         raw_response = load_fixture("openai_sample.json")
     elif sc_token:
-        # === ScrapeCreators path (preferred) ===
+        # === Tier 1: ScrapeCreators path (preferred) ===
         used_scrapecreators = True
         try:
             sys.stderr.write("[Reddit] Using ScrapeCreators API\n")
@@ -216,61 +221,56 @@ def _search_reddit(
             reddit_error = f"ScrapeCreators: {type(e).__name__}: {e}"
             sys.stderr.write(f"[Reddit] ScrapeCreators failed: {e}\n")
             sys.stderr.flush()
-            # Fall through to OpenAI if we have that key
-            if not config.get("OPENAI_API_KEY"):
-                # No OpenAI either: try public Reddit fallback.
-                try:
-                    reddit_items = openai_reddit.search_reddit_public(
-                        topic, from_date, to_date, depth=depth,
-                    )
-                    raw_response = {"source": "reddit_public", "items": reddit_items}
-                    return reddit_items, raw_response, None, False
-                except Exception as e2:
-                    return [], {"error": str(e)}, reddit_error, used_scrapecreators
             used_scrapecreators = False
-            sys.stderr.write("[Reddit] Falling back to OpenAI\n")
-            sys.stderr.flush()
+            # Fall through to Tier 2 (public JSON)
 
-    # === OpenAI path (fallback) ===
+    # === Tier 2: Public Reddit JSON (free, always available) ===
     if not mock:
-        if config.get("OPENAI_API_KEY"):
-            try:
-                raw_response = openai_reddit.search_reddit(
-                    config["OPENAI_API_KEY"],
-                    selected_models["openai"],
-                    topic,
-                    from_date,
-                    to_date,
-                    depth=depth,
-                    auth_source=config.get("OPENAI_AUTH_SOURCE", "api_key"),
-                    account_id=config.get("OPENAI_CHATGPT_ACCOUNT_ID"),
-                )
-            except http.HTTPError as e:
-                raw_response = {"error": str(e)}
-                reddit_error = f"API error: {e}"
-            except Exception as e:
-                raw_response = {"error": str(e)}
-                reddit_error = f"{type(e).__name__}: {e}"
-        else:
-            # No OpenAI auth: direct Reddit public JSON fallback.
-            try:
-                reddit_items = openai_reddit.search_reddit_public(
-                    topic, from_date, to_date, depth=depth,
-                )
+        try:
+            sys.stderr.write("[Reddit] Trying public Reddit JSON\n")
+            sys.stderr.flush()
+            reddit_items = reddit_public.search_reddit_public(
+                topic, from_date, to_date, depth=depth,
+            )
+            if reddit_items:
                 raw_response = {"source": "reddit_public", "items": reddit_items}
-            except http.HTTPError as e:
-                reddit_items = []
-                raw_response = {"error": str(e), "source": "reddit_public"}
-                reddit_error = f"Reddit public API error: {e}"
-            except Exception as e:
-                reddit_items = []
-                raw_response = {"error": str(e), "source": "reddit_public"}
-                reddit_error = f"Reddit public search error: {type(e).__name__}: {e}"
+                sys.stderr.write(f"[Reddit] Public JSON returned {len(reddit_items)} results\n")
+                sys.stderr.flush()
+                return reddit_items, raw_response, None, False
+            # Empty results — fall through to Tier 3
+            sys.stderr.write("[Reddit] Public JSON returned 0 results, trying OpenAI\n")
+            sys.stderr.flush()
+        except Exception as e:
+            sys.stderr.write(f"[Reddit] Public JSON failed: {e}\n")
+            sys.stderr.flush()
+            # Fall through to Tier 3
 
-    # Parse response
+    # === Tier 3: OpenAI Responses API (legacy fallback) ===
+    if not mock and config.get("OPENAI_API_KEY"):
+        try:
+            sys.stderr.write("[Reddit] Falling back to OpenAI Responses API\n")
+            sys.stderr.flush()
+            raw_response = openai_reddit.search_reddit(
+                config["OPENAI_API_KEY"],
+                selected_models["openai"],
+                topic,
+                from_date,
+                to_date,
+                depth=depth,
+                auth_source=config.get("OPENAI_AUTH_SOURCE", "api_key"),
+                account_id=config.get("OPENAI_CHATGPT_ACCOUNT_ID"),
+            )
+        except http.HTTPError as e:
+            raw_response = {"error": str(e)}
+            reddit_error = f"API error: {e}"
+        except Exception as e:
+            raw_response = {"error": str(e)}
+            reddit_error = f"{type(e).__name__}: {e}"
+
+    # Parse response (OpenAI path)
     reddit_items = openai_reddit.parse_reddit_response(raw_response or {})
 
-    # Quick retry with simpler query if few results
+    # Quick retry with simpler query if few results (OpenAI path only)
     if len(reddit_items) < 5 and not mock and not reddit_error and config.get("OPENAI_API_KEY"):
         core = openai_reddit._extract_core_subject(topic)
         if core.lower() != topic.lower():
@@ -292,7 +292,7 @@ def _search_reddit(
             except Exception:
                 pass
 
-    # Subreddit-targeted fallback if still < 3 results
+    # Subreddit-targeted fallback if still < 3 results (OpenAI path only)
     if len(reddit_items) < 3 and not mock and not reddit_error and config.get("OPENAI_API_KEY"):
         sub_query = openai_reddit._build_subreddit_query(topic)
         try:
@@ -617,7 +617,7 @@ def _search_web(
         Tuple of (web_items, web_error)
         web_items are raw dicts ready for websearch.normalize_websearch_items()
     """
-    from lib import brave_search, parallel_search, openrouter_search
+    from lib import brave_search, parallel_search, openrouter_search, exa_search
 
     backend = env.get_web_search_source(config)
     if not backend:
@@ -627,7 +627,11 @@ def _search_web(
     raw_results = []
 
     try:
-        if backend == "parallel":
+        if backend == "exa":
+            raw_results = exa_search.search_web(
+                topic, from_date, to_date, config["EXA_API_KEY"], depth=depth,
+            )
+        elif backend == "parallel":
             raw_results = parallel_search.search_web(
                 topic, from_date, to_date, config["PARALLEL_API_KEY"], depth=depth,
             )
@@ -1537,12 +1541,29 @@ def main():
     # Load config
     config = env.get_config()
 
-    # Inject .env credentials into Bird module before auth check
-    bird_x.set_credentials(config.get('AUTH_TOKEN'), config.get('CT0'))
+    # Detect first run (no SETUP_COMPLETE in config)
+    first_run = setup_wizard.is_first_run(config)
+
+    # On first run, block Bird's Node.js sweet-cookie scanner from probing
+    # browser cookies before the user has given consent via the setup wizard.
+    # Explicit AUTH_TOKEN (from env var) is fine — only block browser scanning.
+    if first_run and config.get('_AUTH_TOKEN_SOURCE') != 'env':
+        os.environ['BIRD_DISABLE_BROWSER_COOKIES'] = '1'
+
+    # Inject .env credentials into Bird module before auth check.
+    # On first run (no SETUP_COMPLETE), only inject explicit env var credentials —
+    # skip if AUTH_TOKEN came from browser cookies (no consent yet).
+    if first_run:
+        auth_source = config.get('_AUTH_TOKEN_SOURCE')
+        if auth_source == 'env':
+            bird_x.set_credentials(config.get('AUTH_TOKEN'), config.get('CT0'))
+    else:
+        bird_x.set_credentials(config.get('AUTH_TOKEN'), config.get('CT0'))
 
     # Auto-detect Bird (no prompts - just use it if available)
     x_source_status = env.get_x_source_status(config)
     x_source = x_source_status["source"]  # 'bird', 'xai', or None
+    x_method = x_source_status.get("method")  # 'env', 'browser-firefox', 'api', etc.
 
     # Auto-detect yt-dlp for YouTube search
     has_ytdlp = env.is_ytdlp_available()
@@ -1570,6 +1591,7 @@ def main():
             "reddit_public": True,
             "xai": bool(config.get("XAI_API_KEY")),
             "x_source": x_source_status["source"],
+            "x_method": x_source_status.get("method"),
             "bird_installed": x_source_status["bird_installed"],
             "bird_authenticated": x_source_status["bird_authenticated"],
             "bird_username": x_source_status.get("bird_username"),
@@ -1583,11 +1605,25 @@ def main():
             "truthsocial": has_truthsocial,
             "polymarket": True,
             "web_search_backend": web_source,
+            "exa": bool(config.get("EXA_API_KEY")),
             "parallel_ai": bool(config.get("PARALLEL_API_KEY")),
             "brave": bool(config.get("BRAVE_API_KEY")),
             "openrouter": bool(config.get("OPENROUTER_API_KEY")),
         }
         print(json.dumps(diag, indent=2))
+        sys.exit(0)
+
+    # Handle 'setup' subcommand
+    if args.topic and args.topic.strip().lower() == "setup":
+        results = setup_wizard.run_auto_setup(config)
+        # Write config
+        env_path = env.CONFIG_FILE
+        if env_path:
+            written = setup_wizard.write_setup_config(env_path)
+            results["env_written"] = written
+        else:
+            results["env_written"] = False
+        print(setup_wizard.get_setup_status_text(results))
         sys.exit(0)
 
     # Validate topic (--diagnose doesn't need one)
@@ -1599,39 +1635,29 @@ def main():
     # Initialize progress display with topic
     progress = ui.ProgressDisplay(args.topic, show_banner=True)
 
-    # Show diagnostic banner when sources are missing
+    # Show status banner (free-first design — lead with what works)
     web_source = env.get_web_search_source(config)
+    reddit_source = env.get_reddit_source(config)
     diag = {
-        "openai": bool(config.get("OPENAI_API_KEY")),
-        "reddit_public": True,
-        "xai": bool(config.get("XAI_API_KEY")),
+        "setup_complete": bool(config.get("SETUP_COMPLETE")),
+        "reddit_source": reddit_source,  # 'scrapecreators', 'openai', or None
         "x_source": x_source_status["source"],
-        "bird_installed": x_source_status["bird_installed"],
-        "bird_authenticated": x_source_status["bird_authenticated"],
-        "bird_username": x_source_status.get("bird_username"),
+        "x_method": x_source_status.get("method"),
         "youtube": has_ytdlp,
         "tiktok": has_tiktok,
         "instagram": has_instagram,
-        "xiaohongshu": has_xiaohongshu,
         "hackernews": True,
-        "bluesky": True,
-        "truthsocial": has_truthsocial,
         "polymarket": True,
+        "bluesky": has_bluesky,
+        "truthsocial": has_truthsocial,
+        "xiaohongshu": has_xiaohongshu,
+        "scrapecreators": bool(config.get("SCRAPECREATORS_API_KEY")),
         "web_search_backend": "deferred to assistant" if args.no_native_web else web_source,
     }
     ui.show_diagnostic_banner(diag)
 
-    # Check available sources (accounting for Bird auto-detection)
+    # Check available sources (now accounts for Bird/cookie auth automatically)
     available = env.get_available_sources(config)
-
-    # Override available if Bird provides X
-    if x_source == 'bird':
-        if available == 'reddit':
-            available = 'both'  # Now have both Reddit + X
-        elif available == 'reddit-web':
-            available = 'all'  # Reddit + X + Web
-        elif available == 'web':
-            available = 'x-web'  # X + Web
 
     # Mock mode can work without keys
     if args.mock:
@@ -1902,9 +1928,9 @@ def main():
     elif has_ytdlp and not report.youtube:
         source_info["youtube_skip_reason"] = "0 results (query may be too specific)"
     if not has_tiktok:
-        source_info["tiktok_skip_reason"] = "No SCRAPECREATORS_API_KEY - sign up at scrapecreators.com (100 free credits)"
+        source_info["tiktok_skip_reason"] = "No SCRAPECREATORS_API_KEY - sign up at scrapecreators.com (100 free API calls, no credit card)"
     if not has_instagram:
-        source_info["instagram_skip_reason"] = "No SCRAPECREATORS_API_KEY - sign up at scrapecreators.com (100 free credits)"
+        source_info["instagram_skip_reason"] = "No SCRAPECREATORS_API_KEY - sign up at scrapecreators.com (100 free API calls, no credit card)"
     if not has_xiaohongshu:
         source_info["xiaohongshu_skip_reason"] = (
             f"Xiaohongshu API unavailable or not logged in - start xiaohongshu-mcp and login "
@@ -1913,8 +1939,16 @@ def main():
     if not web_source:
         source_info["web_skip_reason"] = "assistant will use WebSearch (add BRAVE_API_KEY for native search)"
 
+    # Compute quality score and upgrade nudge
+    research_results = {
+        "x_error": x_error,
+        "youtube_error": youtube_error,
+        "reddit_error": reddit_error,
+    }
+    quality = quality_nudge.compute_quality_score(config, research_results)
+
     # Output result
-    output_result(report, args.emit, web_needed, args.topic, from_date, to_date, missing_keys, args.days, source_info)
+    output_result(report, args.emit, web_needed, args.topic, from_date, to_date, missing_keys, args.days, source_info, first_run=first_run, quality=quality)
 
     # Auto-save raw research to file if --save-dir is set
     if args.save_dir:
@@ -1926,6 +1960,8 @@ def main():
         if save_path.exists():
             save_path = save_dir / f"{slug}-raw-{datetime.now().strftime('%Y-%m-%d')}.md"
         content = render.render_compact(report, missing_keys=missing_keys)
+        if quality and quality.get("nudge_text"):
+            content += "\n" + render.render_quality_nudge(quality)
         content += "\n" + render.render_source_status(report, source_info)
         save_path.write_text(content, encoding="utf-8")
         print(f"📎 {save_path}", file=sys.stderr)
@@ -2043,10 +2079,19 @@ def output_result(
     missing_keys: str = "none",
     days: int = 30,
     source_info: dict = None,
+    first_run: bool = False,
+    quality: dict = None,
 ):
     """Output the result based on emit mode."""
     if emit_mode == "compact":
+        # Emit first-run flag before research output so SKILL.md can detect it
+        if first_run:
+            print("FIRST_RUN: true")
+            print("")
         print(render.render_compact(report, missing_keys=missing_keys))
+        # Quality nudge (right before source status/stats block)
+        if quality and quality.get("nudge_text"):
+            print(render.render_quality_nudge(quality))
         # Append source status footer
         print(render.render_source_status(report, source_info))
     elif emit_mode == "json":

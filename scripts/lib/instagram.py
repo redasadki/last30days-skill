@@ -3,7 +3,7 @@
 Uses ScrapeCreators REST API to search Instagram Reels by keyword, extract
 engagement metrics (views, likes, comments), and fetch video transcripts.
 
-Requires SCRAPECREATORS_API_KEY in config. 100 free credits, then PAYG.
+Requires SCRAPECREATORS_API_KEY in config. 100 free API calls, then PAYG.
 API docs: https://scrapecreators.com/docs
 """
 

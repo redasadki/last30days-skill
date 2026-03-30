@@ -10,7 +10,7 @@
     {
       "name": "last30days",
       "description": "Research any topic from the last 30 days. Become an expert and write copy-paste-ready prompts.",
-      "version": "2.9.5",
+      "version": "2.9.6",
       "author": {
         "name": "Matt Van Horn",
         "url": "https://github.com/mvanhorn"

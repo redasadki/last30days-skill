@@ -6,7 +6,7 @@ set -euo pipefail
 # using `claude --print` to capture real end-to-end output.
 
 SKILL_DIR="$HOME/.claude/skills/last30days"
-REPO_DIR="/Users/mvanhorn/last30days-skill-private"
+REPO_DIR="/Users/mvanhorn/last30days-skill"
 
 # Safety: always restore V2 SKILL.md on exit/crash
 cleanup() {
