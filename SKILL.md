@@ -61,7 +61,7 @@ metadata:
 
 # last30days v2.9.5: Research Any Topic from the Last 30 Days
 
-> **Permissions overview:** Reads public web/platform data and optionally saves research briefings to `~/Documents/Last30Days/`. X/Twitter search uses optional user-provided tokens (AUTH_TOKEN/CT0 env vars). Bluesky search uses optional app password (BSKY_HANDLE/BSKY_APP_PASSWORD env vars - create at bsky.app/settings/app-passwords). All credential usage and data writes are documented in the [Security & Permissions](#security--permissions) section.
+> **Permissions overview:** Reads public web/platform data and optionally saves research briefings to `/Users/claw/ObsidianClaw/last30days/`. X/Twitter search uses optional user-provided tokens (AUTH_TOKEN/CT0 env vars). Bluesky search uses optional app password (BSKY_HANDLE/BSKY_APP_PASSWORD env vars - create at bsky.app/settings/app-passwords). All credential usage and data writes are documented in the [Security & Permissions](#security--permissions) section.
 
 Research ANY topic across Reddit, X, YouTube, and other sources. Surface what people are actually discussing, recommending, betting on, and debating right now.
 
@@ -278,7 +278,7 @@ If `--agent` appears in ARGUMENTS (e.g., `/last30days plaud granola --agent`):
 5. **Skip** the follow-up invitation ("I'm now an expert on X...")
 6. **Output** the complete research report and stop - do not wait for further input
 
-Agent mode saves raw research data to `~/Documents/Last30Days/` automatically via `--save-dir` (handled by the script, no extra tool calls).
+Agent mode saves raw research data to `/Users/claw/ObsidianClaw/last30days/` automatically via `--save-dir` (handled by the script, no extra tool calls).
 
 Agent mode report format:
 
@@ -305,13 +305,13 @@ When the user asks "X vs Y", run THREE research passes in parallel:
 **Pass 1 + 2 (parallel Bash calls):**
 ```bash
 # Run BOTH of these as parallel Bash tool calls in a single message:
-python3 "${SKILL_ROOT}/scripts/last30days.py" {TOPIC_A} --emit=compact --no-native-web --save-dir=~/Documents/Last30Days
-python3 "${SKILL_ROOT}/scripts/last30days.py" {TOPIC_B} --emit=compact --no-native-web --save-dir=~/Documents/Last30Days
+python3 "${SKILL_ROOT}/scripts/last30days.py" {TOPIC_A} --emit=compact --no-native-web --save-dir=/Users/claw/ObsidianClaw/last30days
+python3 "${SKILL_ROOT}/scripts/last30days.py" {TOPIC_B} --emit=compact --no-native-web --save-dir=/Users/claw/ObsidianClaw/last30days
 ```
 
 **Pass 3 (after passes 1+2 complete):**
 ```bash
-python3 "${SKILL_ROOT}/scripts/last30days.py" "{TOPIC_A} vs {TOPIC_B}" --emit=compact --no-native-web --save-dir=~/Documents/Last30Days
+python3 "${SKILL_ROOT}/scripts/last30days.py" "{TOPIC_A} vs {TOPIC_B}" --emit=compact --no-native-web --save-dir=/Users/claw/ObsidianClaw/last30days
 ```
 
 Then do WebSearch for: `{TOPIC_A} vs {TOPIC_B} comparison 2026` and `{TOPIC_A} vs {TOPIC_B} which is better`.
@@ -348,7 +348,7 @@ if [ -z "${SKILL_ROOT:-}" ]; then
   exit 1
 fi
 
-python3 "${SKILL_ROOT}/scripts/last30days.py" $ARGUMENTS --emit=compact --no-native-web --save-dir=~/Documents/Last30Days  # Add --x-handle=HANDLE if RESOLVED_HANDLE is set
+python3 "${SKILL_ROOT}/scripts/last30days.py" $ARGUMENTS --emit=compact --no-native-web --save-dir=/Users/claw/ObsidianClaw/last30days  # Add --x-handle=HANDLE if RESOLVED_HANDLE is set
 ```
 
 Use a **timeout of 300000** (5 minutes) on the Bash call. The script typically takes 1-3 minutes.
@@ -745,7 +745,33 @@ For `/last30days war in Iran` (NEWS):
 
 ## WAIT FOR USER'S RESPONSE
 
-**STOP and wait** for the user to respond. Do NOT call any tools after displaying the invitation. The research script already saved raw data to `~/Documents/Last30Days/` via `--save-dir`.
+**STOP and wait** for the user to respond. Do NOT call any tools after displaying the invitation. The research script already saved raw data to `/Users/claw/ObsidianClaw/last30days/` via `--save-dir`.
+
+## Save to Obsidian (mandatory — local customization)
+
+After displaying results to the user, **always** save the full synthesized research output to Obsidian:
+
+- **Folder:** `/Users/claw/ObsidianClaw/last30days/`
+- **Filename:** `YYYYMMDD.RESEARCH.Topic-Slug.md`
+  - Date = today's date
+  - Topic-Slug = kebab-case summary of the topic
+- **YAML frontmatter:**
+  ```yaml
+  ---
+  type: research
+  date: YYYY-MM-DD
+  source: /last30days research (list platforms that returned results)
+  format: last30days
+  tags:
+    - relevant-tag-1
+    - relevant-tag-2
+  ---
+  ```
+- **Body:** the full "What I learned" synthesis, key patterns, and stats box. Include source attributions.
+- Do NOT save raw script output — save the synthesized, human-readable version.
+- If the script also produced raw source files, save those alongside with `-raw.md` suffix.
+
+This step is non-optional. Every /last30days research run produces an Obsidian note.
 
 ---
 
@@ -854,7 +880,7 @@ Want another prompt? Just tell me what you're creating next.
 - Optionally sends search queries to Brave Search API, Parallel AI API, or OpenRouter API for web search
 - Fetches public Reddit thread data from `reddit.com` for engagement metrics
 - Stores research findings in local SQLite database (watchlist mode only)
-- Saves research briefings as .md files to ~/Documents/Last30Days/
+- Saves research briefings as .md files to /Users/claw/ObsidianClaw/last30days/
 
 **What this skill does NOT do:**
 - Does not post, like, or modify content on any platform
