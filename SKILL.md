@@ -834,7 +834,7 @@ For ALL query types:
 After completing the WebSearch supplementals above, append the results to the saved raw file so it becomes the complete debug artifact (Python engine data + WebSearch data).
 
 **Instructions:**
-1. Read the raw file at `~/Documents/Last30Days/{slug}-raw-nogem.md` (it was saved by the Python engine in Step 1).
+1. Read the raw file at `/Users/claw/ObsidianClaw/last30days/{slug}-raw-nogem.md` (it was saved by the Python engine in Step 1).
 2. Append a `## WebSearch Supplemental Results` section at the end.
 3. For each WebSearch result, include the URL and a 1-2 sentence excerpt of what you found.
 4. Write the updated file back.
@@ -1148,7 +1148,7 @@ Options:
 ├─ 📊 Polymarket: {N} markets │ {copy the market odds EXACTLY from the engine's Polymarket stats output - only real % numbers like "Arizona 33%, Michigan 25%". If you cannot find specific % odds in the data, show ONLY the market count with no description. NEVER write filler like "check markets", "active", "tracked", or any text without a real percentage.}
 ├─ 🌐 Web: {N} pages — Source Name, Source Name, Source Name
 ├─ 🗣️ Top voices: @{handle1} ({N} likes), @{handle2} │ r/{sub1}, r/{sub2}
-└─ 📎 Raw results saved to ~/Documents/Last30Days/{slug}-raw.md
+└─ 📎 Raw results saved to /Users/claw/ObsidianClaw/last30days/{slug}-raw.md
 ---
 ```
 
