@@ -699,18 +699,27 @@ def enrich_with_comments(
     top_items = ranked[:max_videos]
     _log(f"Enriching comments for {len(top_items)} YouTube videos")
 
-    enriched_count = 0
-    for item in top_items:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _enrich_one(item: dict) -> bool:
         video_id = item.get("video_id", "")
         if not video_id:
-            continue
+            return False
         try:
             comments = _fetch_video_comments(video_id, token, max_comments)
             if comments:
                 item["top_comments"] = comments
-                enriched_count += 1
+                return True
         except Exception as exc:
             _log(f"Comment enrichment failed for {video_id}: {exc}")
+        return False
+
+    enriched_count = 0
+    with ThreadPoolExecutor(max_workers=min(4, len(top_items))) as executor:
+        futures = {executor.submit(_enrich_one, item): item for item in top_items}
+        for future in as_completed(futures):
+            if future.result():
+                enriched_count += 1
 
     _log(f"Enriched {enriched_count}/{len(top_items)} videos with comments")
     return items

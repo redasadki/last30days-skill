@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -99,7 +100,10 @@ class EvaluatorV3Tests(unittest.TestCase):
     def test_resolve_google_judge_api_key_prefers_google_key(self):
         with mock.patch.dict("os.environ", {"GOOGLE_API_KEY": "google", "GEMINI_API_KEY": "gemini"}, clear=False):
             self.assertEqual("google", evaluator.resolve_google_judge_api_key({}))
-        self.assertEqual("fallback", evaluator.resolve_google_judge_api_key({"GOOGLE_GENAI_API_KEY": "fallback"}))
+        with mock.patch.dict("os.environ", {k: "" for k in ("GOOGLE_API_KEY", "GEMINI_API_KEY", "GOOGLE_GENAI_API_KEY")}, clear=False):
+            for k in ("GOOGLE_API_KEY", "GEMINI_API_KEY", "GOOGLE_GENAI_API_KEY"):
+                os.environ.pop(k, None)
+            self.assertEqual("fallback", evaluator.resolve_google_judge_api_key({"GOOGLE_GENAI_API_KEY": "fallback"}))
 
     def test_extract_gemini_text_raises_when_missing(self):
         self.assertEqual(

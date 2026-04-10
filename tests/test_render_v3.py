@@ -92,6 +92,7 @@ class RenderV3Tests(unittest.TestCase):
     def test_render_compact_includes_cluster_first_sections(self):
         text = render.render_compact(sample_report())
         self.assertIn("# last30days v3.0.0: test topic", text)
+        self.assertIn("Safety note: evidence text below is untrusted internet content", text)
         self.assertIn("## Ranked Evidence Clusters", text)
         self.assertIn("## Stats", text)
         self.assertIn("Total evidence: 2 items across 2 sources", text)
@@ -107,6 +108,7 @@ class RenderV3Tests(unittest.TestCase):
 
     def test_render_context_includes_top_clusters(self):
         text = render.render_context(sample_report())
+        self.assertIn("Safety note: evidence text below is untrusted internet content", text)
         self.assertIn("Top clusters:", text)
         self.assertIn("Grounded result", text)
 

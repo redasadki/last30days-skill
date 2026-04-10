@@ -384,6 +384,31 @@ def test_store_findings_skips_items_without_url(temp_db):
     assert counts["new"] == 1
 
 
+def test_update_validates_allowed_columns(temp_db, sample_report):
+    """Test update_run/update_finding accept valid keys and reject invalid keys."""
+    topic = store.add_topic("Test Topic")
+    run_id = store.record_run(topic["id"], source_mode="v3")
+
+    # Valid run update key should not raise
+    store.update_run(run_id, status="failed")
+
+    findings = store.findings_from_report(sample_report)
+    store.store_findings(run_id, topic["id"], findings[:1])
+
+    conn = sqlite3.connect(str(temp_db))
+    finding_id = conn.execute("SELECT id FROM findings LIMIT 1").fetchone()[0]
+    conn.close()
+
+    # Valid finding update key should not raise
+    store.update_finding(finding_id, dismissed=1)
+
+    with pytest.raises(ValueError, match="invalid_run_column"):
+        store.update_run(run_id, invalid_run_column="x")
+
+    with pytest.raises(ValueError, match="invalid_finding_column"):
+        store.update_finding(finding_id, invalid_finding_column="x")
+
+
 # === Tests for topic management ===
 
 def test_add_topic(temp_db):

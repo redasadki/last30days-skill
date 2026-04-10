@@ -213,7 +213,10 @@ def _run_bird_search(query: str, count: int, timeout: int) -> Dict[str, Any]:
         if not output:
             return {"items": []}
 
-        return json.loads(output)
+        parsed = json.loads(output)
+        if isinstance(parsed, list):
+            return {"items": parsed}
+        return parsed
 
     except json.JSONDecodeError as e:
         return {"error": f"Invalid JSON response: {e}", "items": []}
@@ -309,10 +312,9 @@ def search_handles(
     Returns:
         List of raw item dicts (same format as parse_bird_response output).
     """
-    all_items = []
     core_topic = _extract_core_subject(topic) if topic else None
 
-    for handle in handles:
+    def _search_one_handle(handle: str) -> List[Dict[str, Any]]:
         handle = handle.lstrip("@")
         if core_topic:
             query = f"from:{handle} {core_topic} since:{from_date}"
@@ -347,24 +349,32 @@ def search_handles(
                     proc.kill()
                 proc.wait(timeout=5)
                 _log(f"Handle search timed out for @{handle}")
-                continue
+                return []
 
             if proc.returncode != 0:
                 _log(f"Handle search failed for @{handle}: {(stderr or '').strip()}")
-                continue
+                return []
 
             output = (stdout or "").strip()
             if not output:
-                continue
+                return []
 
             response = json.loads(output)
-            items = parse_bird_response(response, query=core_topic)
-            all_items.extend(items)
+            return parse_bird_response(response, query=core_topic)
 
         except json.JSONDecodeError:
             _log(f"Invalid JSON from handle search for @{handle}")
         except (OSError, subprocess.SubprocessError) as e:
             _log(f"Handle search error for @{handle}: {e}")
+        return []
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    all_items: List[Dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=min(5, len(handles))) as executor:
+        futures = {executor.submit(_search_one_handle, h): h for h in handles}
+        for future in as_completed(futures):
+            all_items.extend(future.result())
 
     return all_items
 

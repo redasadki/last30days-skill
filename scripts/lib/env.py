@@ -261,6 +261,7 @@ def get_config() -> dict[str, Any]:
         ('SERPER_API_KEY', None),
         ('OPENROUTER_API_KEY', None),
         ('PARALLEL_API_KEY', None),
+        ('XQUIK_API_KEY', None),
         ('FROM_BROWSER', None),
         ('SETUP_COMPLETE', None),
         ('INCLUDE_SOURCES', None),
@@ -613,3 +614,17 @@ def is_pinterest_available(config: dict[str, Any]) -> bool:
 def get_pinterest_token(config: dict[str, Any]) -> str:
     """Get Pinterest API token (same ScrapeCreators key as TikTok/Instagram)."""
     return config.get('SCRAPECREATORS_API_KEY') or ''
+
+
+# Xquik
+def is_xquik_available(config: dict[str, Any]) -> bool:
+    """Check if Xquik X search source is available.
+
+    Requires XQUIK_API_KEY (API key from xquik.com).
+    """
+    return bool(config.get('XQUIK_API_KEY'))
+
+
+def get_xquik_token(config: dict[str, Any]) -> str:
+    """Get Xquik API key."""
+    return config.get('XQUIK_API_KEY') or ''

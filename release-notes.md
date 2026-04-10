@@ -2,6 +2,12 @@ The AI world reinvents itself every month. This skill keeps you current.
 
 `/last30days` researches your topic across **Reddit, X, YouTube, TikTok, Instagram, Hacker News, Polymarket, and the web** from the last 30 days, finds what the community is actually upvoting, sharing, betting on, and saying on camera, and writes you a grounded narrative with real citations.
 
+## v3 Community
+
+v3 was shaped by community contributors whose PRs and issues inspired core features. Their code wasn't merged directly (v3 was a ground-up rewrite), but their ideas drove what shipped. See [CONTRIBUTORS.md](CONTRIBUTORS.md) for the full list.
+
+Thanks to @uppinote20, @zerone0x, @thinkun, @thomasmktong, @fanispoulinakisai-boop, @pejmanjohn, @zl190, and @hnshah.
+
 ## What's New in v2.9.1
 
 **Auto-save to ~/Documents/Last30Days/.** Every run now saves the complete research briefing - synthesis, stats, and follow-up suggestions - as a topic-named `.md` file to your Documents folder. Build a personal research library without lifting a finger. Inspired by [@devin_explores](https://x.com/devin_explores) who was already doing this manually.

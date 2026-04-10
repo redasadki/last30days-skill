@@ -12,6 +12,8 @@
 
 **An AI agent-led search engine scored by upvotes, likes, and real money - not editors.**
 
+This README tracks the current v3 pipeline. The runtime skill spec lives in [skills/last30days-v3/SKILL.md](skills/last30days-v3/SKILL.md), which is the source of truth for the latest command and setup behavior.
+
 Claude Code:
 ```
 /plugin marketplace add mvanhorn/last30days-skill
@@ -86,7 +88,7 @@ The synthesis ranks by what real people actually engaged with. Social relevancy,
 
 **To learn something fast.** `/last30days Nano Banana Pro prompting` - JSON-structured prompts are replacing tag soup. @pictsbyai's nested format prevents "concept bleeding." Edit-first workflow beats regeneration. Then it writes you a production prompt using exactly what the community said works.
 
-## What's New in v3
+## What v3 Changed
 
 ### Intelligent search: the killer feature
 
@@ -134,8 +136,15 @@ Say "eli5 on" after any research run. The synthesis rewrites in plain language. 
 ## Install
 
 ### Claude Code
+
+#### Install
 ```
 /plugin marketplace add mvanhorn/last30days-skill
+```
+
+#### Update
+```
+claude plugin update last30days@last30days-skill
 ```
 
 ### OpenClaw

@@ -39,6 +39,7 @@ from . import (
     truthsocial,
     xai_x,
     xiaohongshu_api,
+    xquik,
     youtube_yt,
 )
 from .cluster import cluster_candidates
@@ -56,6 +57,7 @@ SEARCH_ALIAS = {
     "truth": "truthsocial",
     "web": "grounding",
     "xhs": "xiaohongshu",
+    "xquik": "xquik",
 }
 
 MAX_SOURCE_FETCHES: dict[str, int] = {"x": 2}
@@ -74,6 +76,7 @@ MOCK_AVAILABLE_SOURCES = [
     "xiaohongshu",
     "github",
     "perplexity",
+    "xquik",
 ]
 
 
@@ -117,6 +120,8 @@ def available_sources(config: dict[str, Any], requested_sources: list[str] | Non
         available.append("threads")
     if requested_sources and "pinterest" in requested_sources and env.is_pinterest_available(config):
         available.append("pinterest")
+    if env.is_xquik_available(config):
+        available.append("xquik")
     return available
 
 
@@ -719,44 +724,49 @@ def _retry_thin_sources(
         weight=0.3,
     )
 
-    for source in thin_sources:
-        if source in rate_limited_sources:
-            continue
-        try:
-            raw_items, _artifact = _retrieve_stream(
-                topic=topic,
-                subquery=retry_subquery,
-                source=source,
-                config=config,
-                depth=depth,
-                date_range=date_range,
-                runtime=runtime,
-                mock=mock,
-                rate_limited_sources=rate_limited_sources,
-                rate_limit_lock=rate_limit_lock,
-                web_backend=web_backend,
-                raw_topic=topic,
-            )
-            normalized = _normalize_score_dedupe(
-                source,
-                raw_items,
-                from_date,
-                to_date,
-                freshness_mode=plan.freshness_mode,
-                ranking_query=retry_subquery.ranking_query,
-            )
-            normalized = normalized[:settings["per_stream_limit"]]
+    def _retry_one_source(source: str) -> tuple[str, list[schema.SourceItem]]:
+        raw_items, _artifact = _retrieve_stream(
+            topic=topic,
+            subquery=retry_subquery,
+            source=source,
+            config=config,
+            depth=depth,
+            date_range=date_range,
+            runtime=runtime,
+            mock=mock,
+            rate_limited_sources=rate_limited_sources,
+            rate_limit_lock=rate_limit_lock,
+            web_backend=web_backend,
+            raw_topic=topic,
+        )
+        normalized = _normalize_score_dedupe(
+            source,
+            raw_items,
+            from_date,
+            to_date,
+            freshness_mode=plan.freshness_mode,
+            ranking_query=retry_subquery.ranking_query,
+        )
+        return source, normalized[:settings["per_stream_limit"]]
 
-            existing_urls = {item.url for item in bundle.items_by_source.get(source, []) if item.url}
-            new_items = [item for item in normalized if item.url not in existing_urls]
+    retryable = [s for s in thin_sources if s not in rate_limited_sources]
 
-            if new_items:
-                bundle.items_by_source.setdefault(source, []).extend(new_items)
-                primary_label = plan.subqueries[0].label if plan.subqueries else "primary"
-                existing = bundle.items_by_source_and_query.get((primary_label, source), [])
-                bundle.items_by_source_and_query[(primary_label, source)] = existing + new_items
-        except Exception as exc:
-            print(f"[Pipeline] Retry failed for {source}: {type(exc).__name__}: {exc}", file=sys.stderr)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    with ThreadPoolExecutor(max_workers=min(4, len(retryable) or 1)) as executor:
+        futures = {executor.submit(_retry_one_source, s): s for s in retryable}
+        for future in as_completed(futures):
+            source = futures[future]
+            try:
+                source, normalized = future.result()
+                existing_urls = {item.url for item in bundle.items_by_source.get(source, []) if item.url}
+                new_items = [item for item in normalized if item.url not in existing_urls]
+
+                if new_items:
+                    bundle.items_by_source.setdefault(source, []).extend(new_items)
+                    primary_label = plan.subqueries[0].label if plan.subqueries else "primary"
+                    bundle.items_by_source_and_query.setdefault((primary_label, source), []).extend(new_items)
+            except Exception as exc:
+                print(f"[Pipeline] Retry failed for {source}: {type(exc).__name__}: {exc}", file=sys.stderr)
 
 
 def _retrieve_stream(
@@ -930,6 +940,13 @@ def _retrieve_stream(
         ), {}
     if source == "perplexity":
         return perplexity.search(subquery.search_query, date_range, config, deep=config.get("_deep_research", False))
+    if source == "xquik":
+        result = xquik.search_xquik(
+            subquery.search_query, from_date, to_date,
+            depth=depth,
+            token=env.get_xquik_token(config),
+        )
+        return xquik.parse_xquik_response(result), {}
     raise RuntimeError(f"Unsupported source: {source}")
 
 
