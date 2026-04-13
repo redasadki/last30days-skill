@@ -77,6 +77,13 @@ class CliV3Tests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             cli.parse_search_flag(" , ")
 
+    def test_build_parser_accepts_days_alias_and_preserves_topic_tokens(self):
+        parser = cli.build_parser()
+        args, extra = parser.parse_known_args(["--days", "7", "biosecurity", "ai", "agents"])
+        self.assertEqual(7, args.lookback_days)
+        self.assertEqual(["biosecurity", "ai", "agents"], args.topic)
+        self.assertEqual([], extra)
+
     def test_ensure_supported_python_rejects_old_interpreter_with_actionable_error(self):
         stderr = io.StringIO()
         with redirect_stderr(stderr):

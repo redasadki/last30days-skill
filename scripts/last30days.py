@@ -165,7 +165,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tiktok-hashtags", help="Comma-separated TikTok hashtags without # (e.g., tella,screenrecording)")
     parser.add_argument("--tiktok-creators", help="Comma-separated TikTok creator handles (e.g., TellaHQ,taborplace)")
     parser.add_argument("--ig-creators", help="Comma-separated Instagram creator handles (e.g., tella.tv,laborstories)")
-    parser.add_argument("--lookback-days", type=int, default=30, help="Number of days to look back for research (default: 30, watchlist uses 90)")
+    parser.add_argument(
+        "--days",
+        "--lookback-days",
+        dest="lookback_days",
+        type=int,
+        default=30,
+        help="Number of days to look back for research (default: 30, watchlist uses 90)",
+    )
     parser.add_argument("--auto-resolve", action="store_true",
                         help="Use web search to discover subreddits/handles before planning (for platforms without WebSearch)")
     parser.add_argument("--github-user", help="GitHub username for person-mode search (e.g., steipete)")
