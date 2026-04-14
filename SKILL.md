@@ -1,6 +1,6 @@
 ---
 name: last30days
-version: "3.0.0"
+version: "3.0.1"
 description: "Multi-query social research across Reddit, X, YouTube, TikTok, Instagram, Hacker News, Polymarket, and the web. Intelligent query planning with Gemini/OpenAI fallback."
 argument-hint: 'last30days AI video tools, last30days best noise cancelling headphones'
 allowed-tools: Bash, Read, Write, AskUserQuestion, WebSearch
