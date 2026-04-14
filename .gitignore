@@ -19,3 +19,9 @@ mise.toml
 .venv/
 .coverage
 htmlcov/
+
+# Root vendor/ is accidental - real vendored client lives at scripts/lib/vendor/bird-search/
+/vendor/
+
+# build artifact from scripts/build-skill.sh
+/dist/

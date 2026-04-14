@@ -182,6 +182,17 @@ Workarounds:
 git clone https://github.com/mvanhorn/last30days-skill.git ~/.claude/skills/last30days
 ```
 
+### Upload as a Claude Skill (claude.ai)
+
+To upload `last30days` via the claude.ai skill UI, produce a `.skill` file:
+
+```bash
+bash scripts/build-skill.sh
+# -> dist/last30days.skill
+```
+
+Then drag `dist/last30days.skill` into the "Upload skill" dialog. The script honors claude.ai's 200-file upload cap and ships a single `SKILL.md` at the skill-folder root.
+
 Reddit (with comments), Hacker News, Polymarket, and GitHub work immediately. Zero configuration. Run `/last30days` once and the setup wizard unlocks more sources in 30 seconds.
 
 ## Bring your own keys

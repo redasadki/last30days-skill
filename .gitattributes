@@ -1,0 +1,43 @@
+# Exclude non-runtime files from `git archive` output.
+# Used by scripts/build-skill.sh to produce a claude.ai-upload-ready .skill file.
+# See docs/plans/2026-04-14-001-fix-skill-upload-200-file-limit-plan.md.
+
+# Anthropic canonical skill-packaging excludes
+# (mirrors anthropics/skills/skills/skill-creator/scripts/package_skill.py)
+__pycache__/   export-ignore
+node_modules/  export-ignore
+*.pyc          export-ignore
+.DS_Store      export-ignore
+evals/         export-ignore
+
+# Dev, docs, test, and media - not needed at skill runtime
+tests/         export-ignore
+docs/          export-ignore
+fixtures/      export-ignore
+assets/        export-ignore
+
+# Second SKILL.md files would confuse claude.ai's uploader
+# (skills/last30days/ is an internal spec; skills/last30days-nux/ is a symlink)
+skills/        export-ignore
+
+# Historical + repo-only manifests
+SKILL-original.md  export-ignore
+SPEC.md            export-ignore
+TASKS.md           export-ignore
+test-run.log       export-ignore
+CONTRIBUTORS.md    export-ignore
+HERMES_SETUP.md    export-ignore
+release-notes.md   export-ignore
+CHANGELOG.md       export-ignore
+uv.lock            export-ignore
+
+# Platform adapters - skill-upload path is platform-agnostic
+.agents/         export-ignore
+.codex-plugin/   export-ignore
+.hermes-plugin/  export-ignore
+.claude-plugin/  export-ignore
+
+# Build config itself
+.clawhubignore  export-ignore
+.gitignore      export-ignore
+.gitattributes  export-ignore
