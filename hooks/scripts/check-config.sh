@@ -12,7 +12,11 @@ check_perms() {
   local file="$1"
   if [[ ! -f "$file" ]]; then return; fi
   local perms
-  perms=$(stat -f '%Lp' "$file" 2>/dev/null || stat -c '%a' "$file" 2>/dev/null || echo "")
+  # Try GNU stat first (Linux), fall back to BSD stat (macOS).
+  # On Linux, `stat -f` prints filesystem info (not permissions) and exits 0,
+  # so the previous BSD-first ordering left $perms as multi-line garbage on
+  # every Linux session start and printed a false WARNING.
+  perms=$(stat -c '%a' "$file" 2>/dev/null || stat -f '%Lp' "$file" 2>/dev/null || echo "")
   if [[ -n "$perms" && "$perms" != "600" && "$perms" != "400" ]]; then
     echo "/last30days: WARNING — $file has permissions $perms (should be 600)."
     echo "  Fix: chmod 600 $file"

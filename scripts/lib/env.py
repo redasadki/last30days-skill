@@ -264,7 +264,7 @@ def get_config() -> dict[str, Any]:
         ('XQUIK_API_KEY', None),
         ('FROM_BROWSER', None),
         ('SETUP_COMPLETE', None),
-        ('INCLUDE_SOURCES', None),
+        ('INCLUDE_SOURCES', ''),
     ]
 
     for key, default in keys:
@@ -356,6 +356,10 @@ def get_x_source_with_method(config: dict[str, Any]) -> tuple[str | None, str]:
     if config.get("AUTH_TOKEN") and config.get("CT0"):
         method = config.get("_AUTH_TOKEN_SOURCE", "env")
         return "bird", method
+    # Fall back to xurl CLI (official X API v2, OAuth2, free developer app)
+    from . import xurl_x
+    if xurl_x.is_available():
+        return "xurl", "oauth2"
     return None, "none"
 
 
@@ -401,6 +405,7 @@ def get_x_source(config: dict[str, Any]) -> str | None:
     Returns:
         'bird' if Bird is installed and explicit cookies are configured,
         'xai' if XAI_API_KEY is configured,
+        'xurl' if xurl CLI is installed and authenticated,
         None if no X source available.
     """
     # Import here to avoid circular dependency
@@ -421,6 +426,11 @@ def get_x_source(config: dict[str, Any]) -> str | None:
     if has_bird_creds and bird_x.is_bird_installed():
         return 'bird'
 
+    # Fall back to xurl CLI (official X API v2, OAuth2, free developer app)
+    from . import xurl_x
+    if xurl_x.is_available():
+        return 'xurl'
+
     return None
 
 
@@ -439,6 +449,18 @@ def is_youtube_comments_available(config: dict[str, Any]) -> bool:
         return False
     include = _parse_include_sources(config)
     return 'youtube_comments' in include
+
+
+def is_tiktok_comments_available(config: dict[str, Any]) -> bool:
+    """Check if TikTok comment enrichment is available.
+
+    Requires SCRAPECREATORS_API_KEY AND tiktok_comments in INCLUDE_SOURCES.
+    Mirrors the youtube_comments opt-in pattern.
+    """
+    if not config.get('SCRAPECREATORS_API_KEY'):
+        return False
+    include = _parse_include_sources(config)
+    return 'tiktok_comments' in include
 
 
 def is_youtube_sc_available(config: dict[str, Any]) -> bool:
@@ -579,6 +601,8 @@ def get_x_source_status(config: dict[str, Any]) -> dict[str, Any]:
     """
     from . import bird_x
 
+    if config.get('AUTH_TOKEN') and config.get('CT0'):
+        bird_x.set_credentials(config.get('AUTH_TOKEN'), config.get('CT0'))
     bird_status = bird_x.get_bird_status()
     xai_available = bool(config.get('XAI_API_KEY'))
 
@@ -588,14 +612,18 @@ def get_x_source_status(config: dict[str, Any]) -> dict[str, Any]:
     elif xai_available:
         source = 'xai'
     else:
-        source = None
+        # Fall back to xurl CLI
+        from . import xurl_x as _xurl_check
+        source = 'xurl' if _xurl_check.is_available() else None
 
+    from . import xurl_x as _xurl_x
     return {
         "source": source,
         "bird_installed": bird_status["installed"],
         "bird_authenticated": bird_status["authenticated"],
         "bird_username": bird_status["username"],
         "xai_available": xai_available,
+        "xurl_available": _xurl_x.is_available(),
         "can_install_bird": bird_status["can_install"],
     }
 

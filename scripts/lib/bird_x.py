@@ -177,6 +177,8 @@ def _run_bird_search(query: str, count: int, timeout: int) -> Dict[str, Any]:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             preexec_fn=preexec,
             env=_subprocess_env(),
         )
@@ -336,6 +338,8 @@ def search_handles(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 preexec_fn=preexec,
                 env=_subprocess_env(),
             )
@@ -460,7 +464,7 @@ def parse_bird_response(response: Dict[str, Any], query: str = "") -> List[Dict[
             "url": url,
             "author_handle": author_handle.lstrip("@"),
             "date": date,
-            "engagement": engagement,
+            "engagement": engagement if any(v is not None for v in engagement.values()) else None,
             "why_relevant": "",  # Bird doesn't provide relevance explanations
             "relevance": _compute_relevance(query, str(tweet.get("text", ""))) if query else 0.7,
         }

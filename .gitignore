@@ -15,3 +15,16 @@ variants/open/references/research.md
 __pycache__/
 *.pyc
 mise.toml
+.memsearch/
+.venv/
+.coverage
+htmlcov/
+
+# Root vendor/ is accidental - real vendored client lives at scripts/lib/vendor/bird-search/
+/vendor/
+
+# build artifact from scripts/build-skill.sh
+/dist/
+
+# Internal planning docs (ce:plan output) — keep local, don't publish
+docs/plans/

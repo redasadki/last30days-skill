@@ -11,7 +11,7 @@ COMMON_TARGETS=(
   # but local development needs the cache kept in sync with the repo.
   # Do NOT add ~/.claude/skills/last30days - it creates a duplicate
   # /last30days-3 in the slash command menu alongside the plugin version.
-  "$HOME/.claude/plugins/cache/last30days-skill-private/last30days-3/3.0.0-alpha"
+  "$HOME/.claude/plugins/cache/last30days-skill-private/last30days-3/3.0.1"
   "$HOME/.claude/plugins/cache/last30days-skill-private/last30days-3-nogem/3.0.0-nogem"
   "$HOME/.agents/skills/last30days"
   "$HOME/.codex/skills/last30days"
@@ -24,7 +24,7 @@ sync_target() {
 
   echo ""
   echo "--- Syncing to $target ---"
-  mkdir -p "$target/scripts/lib" "$target/variants/open/references"
+  mkdir -p "$target/scripts/lib"
 
   cp "$skill_md" "$target/SKILL.md"
 
@@ -35,7 +35,13 @@ sync_target() {
     "$SRC/scripts/store.py" \
     "$target/scripts/"
   rsync -a "$SRC/scripts/lib/"*.py "$target/scripts/lib/"
-  rsync -a "$SRC/variants/open/" "$target/variants/open/"
+
+  # The OpenClaw variant lives in the private repo only. Skip cleanly when
+  # running this script from the public repo where variants/open does not exist.
+  if [ -d "$SRC/variants/open" ]; then
+    mkdir -p "$target/variants/open/references"
+    rsync -a "$SRC/variants/open/" "$target/variants/open/"
+  fi
 
   if [ -d "$SRC/scripts/lib/vendor" ]; then
     rsync -a "$SRC/scripts/lib/vendor" "$target/scripts/lib/"
@@ -63,7 +69,55 @@ for t in "${COMMON_TARGETS[@]}"; do
   sync_target "$t" "$SRC/SKILL.md"
 done
 
-sync_target "$OPENCLAW_TARGET" "$SRC/variants/open/SKILL.md"
+# Hermes sync: deploy to Hermes skills directory if it exists
+HERMES_TARGET="$HOME/.hermes/skills/research/last30days"
+if [ -d "$HOME/.hermes/skills/research" ]; then
+  echo ""
+  echo "--- Syncing to Hermes ---"
+  mkdir -p "$HERMES_TARGET/scripts/lib"
+  
+  cp "$SRC/SKILL.md" "$HERMES_TARGET/SKILL.md"
+  
+  rsync -a \
+    "$SRC/scripts/last30days.py" \
+    "$SRC/scripts/watchlist.py" \
+    "$SRC/scripts/briefing.py" \
+    "$SRC/scripts/store.py" \
+    "$HERMES_TARGET/scripts/"
+  rsync -a "$SRC/scripts/lib/"*.py "$HERMES_TARGET/scripts/lib/"
+  
+  if [ -d "$SRC/scripts/lib/vendor" ]; then
+    rsync -a "$SRC/scripts/lib/vendor" "$HERMES_TARGET/scripts/lib/"
+  fi
+  
+  if [ -d "$SRC/fixtures" ]; then
+    mkdir -p "$HERMES_TARGET/fixtures"
+    rsync -a "$SRC/fixtures/" "$HERMES_TARGET/fixtures/"
+  fi
+  
+  mod_count=$(ls "$HERMES_TARGET/scripts/lib/"*.py 2>/dev/null | wc -l | tr -d ' ')
+  echo "  Copied $mod_count modules to Hermes"
+  
+  if (
+    cd "$HERMES_TARGET/scripts" &&
+    python3 -c "import briefing, store, watchlist; from lib import youtube_yt, bird_x, render, ui; print('  Import check: OK')"
+  ); then
+    true
+  else
+    echo "  Import check FAILED"
+  fi
+fi
+
+# OpenClaw sync only runs when the private-repo OpenClaw variant is present
+# in the source tree. The public repo does not ship variants/open (the variant
+# is sanitized via strip_for_openclaw.py and published separately from
+# last30days-skill-private).
+if [ -d "$SRC/variants/open" ]; then
+  sync_target "$OPENCLAW_TARGET" "$SRC/variants/open/SKILL.md"
+else
+  echo ""
+  echo "Skipping OpenClaw target (no variants/open in this repo)"
+fi
 
 echo ""
 echo "Sync complete."

@@ -655,14 +655,6 @@ except ImportError:
     _requests = None
 
 
-def _sc_headers(token: str) -> Dict[str, str]:
-    """Build ScrapeCreators request headers."""
-    return {
-        "x-api-key": token,
-        "Content-Type": "application/json",
-    }
-
-
 def _total_engagement(item: Dict[str, Any]) -> int:
     """Combined engagement score for ranking which videos to enrich."""
     eng = item.get("engagement", {})
@@ -740,12 +732,13 @@ def _fetch_video_comments(
     Returns:
         List of comment dicts with author, text, likes, date.
     """
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
     if not _requests:
         try:
             from urllib.parse import urlencode
-            params = urlencode({"id": video_id})
+            params = urlencode({"url": video_url})
             url = f"{SCRAPECREATORS_YT_BASE}/video/comments?{params}"
-            headers = _sc_headers(token)
+            headers = http.scrapecreators_headers(token)
             headers["User-Agent"] = http.USER_AGENT
             data = http.get(url, headers=headers, timeout=30, retries=2)
         except Exception as exc:
@@ -755,8 +748,8 @@ def _fetch_video_comments(
         try:
             resp = _requests.get(
                 f"{SCRAPECREATORS_YT_BASE}/video/comments",
-                params={"id": video_id},
-                headers=_sc_headers(token),
+                params={"url": video_url},
+                headers=http.scrapecreators_headers(token),
                 timeout=30,
             )
             resp.raise_for_status()
@@ -771,11 +764,32 @@ def _fetch_video_comments(
         text = c.get("text") or c.get("body") or c.get("content", "")
         if not text:
             continue
+
+        # SC returns author as {"name": "@handle", ...}; legacy mocks may pass a string.
+        author = c.get("author") or c.get("author_name", "")
+        if isinstance(author, dict):
+            author = author.get("name") or author.get("handle") or ""
+
+        # SC nests likes under engagement.likes; legacy shapes used top-level keys.
+        engagement = c.get("engagement") or {}
+        likes = c.get("likes")
+        if likes is None:
+            likes = engagement.get("likes", 0) if isinstance(engagement, dict) else 0
+        if not likes:
+            likes = c.get("vote_count", 0)
+
+        date = (
+            c.get("date")
+            or c.get("published_at")
+            or c.get("publishedTime")
+            or c.get("publishedTimeText", "")
+        )
+
         comments.append({
-            "author": c.get("author") or c.get("author_name", ""),
+            "author": author,
             "text": text[:400],
-            "likes": c.get("likes") or c.get("vote_count", 0),
-            "date": c.get("date") or c.get("published_at", ""),
+            "likes": likes,
+            "date": date,
         })
 
     return comments
@@ -906,7 +920,7 @@ def _sc_youtube_search(keyword: str, token: str) -> List[Dict[str, Any]]:
             from urllib.parse import urlencode
             params = urlencode({"keyword": keyword})
             url = f"{SCRAPECREATORS_YT_BASE}/search?{params}"
-            headers = _sc_headers(token)
+            headers = http.scrapecreators_headers(token)
             headers["User-Agent"] = http.USER_AGENT
             data = http.get(url, headers=headers, timeout=30, retries=2)
             return data.get("videos", data.get("data", data.get("items", [])))
@@ -918,7 +932,7 @@ def _sc_youtube_search(keyword: str, token: str) -> List[Dict[str, Any]]:
         resp = _requests.get(
             f"{SCRAPECREATORS_YT_BASE}/search",
             params={"keyword": keyword},
-            headers=_sc_headers(token),
+            headers=http.scrapecreators_headers(token),
             timeout=30,
         )
         resp.raise_for_status()
@@ -939,12 +953,13 @@ def _sc_fetch_transcript(video_id: str, token: str) -> Optional[str]:
     Returns:
         Plaintext transcript string, or None if unavailable.
     """
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
     if not _requests:
         try:
             from urllib.parse import urlencode
-            params = urlencode({"id": video_id})
+            params = urlencode({"url": video_url})
             url = f"{SCRAPECREATORS_YT_BASE}/video/transcript?{params}"
-            headers = _sc_headers(token)
+            headers = http.scrapecreators_headers(token)
             headers["User-Agent"] = http.USER_AGENT
             data = http.get(url, headers=headers, timeout=30, retries=2)
         except Exception as exc:
@@ -954,8 +969,8 @@ def _sc_fetch_transcript(video_id: str, token: str) -> Optional[str]:
         try:
             resp = _requests.get(
                 f"{SCRAPECREATORS_YT_BASE}/video/transcript",
-                params={"id": video_id},
-                headers=_sc_headers(token),
+                params={"url": video_url},
+                headers=http.scrapecreators_headers(token),
                 timeout=30,
             )
             if resp.status_code != 200:
