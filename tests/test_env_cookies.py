@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills" / "last30days" / "scripts"))
 
 from lib.env import extract_browser_credentials, COOKIE_DOMAINS
 
@@ -114,9 +114,10 @@ class TestGetConfigCookieIntegration:
     @patch("lib.cookie_extract.extract_cookies")
     @patch("lib.env._find_project_env", return_value=None)
     @patch("lib.env.load_env_file", return_value={})
+    @patch("lib.env._load_keychain", return_value={})
     @patch("lib.env.get_openai_auth")
     def test_get_config_injects_cookies(
-        self, mock_openai, mock_load, mock_proj, mock_extract
+        self, mock_openai, mock_keychain, mock_load, mock_proj, mock_extract
     ):
         from lib.env import get_config, OpenAIAuth
         mock_openai.return_value = OpenAIAuth(

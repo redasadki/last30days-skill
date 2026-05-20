@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "last30days" / "scripts"))
 
 from lib import xurl_x
 
@@ -42,6 +42,13 @@ class TestIsAvailable(unittest.TestCase):
 
     def test_returns_false_when_not_installed(self):
         with mock.patch("subprocess.run", side_effect=FileNotFoundError):
+            self.assertFalse(xurl_x.is_available())
+
+    def test_returns_false_on_permission_error(self):
+        # WSL hits this when a Windows-mounted PATH entry points at an
+        # exec-blocked shim (e.g. WindowsApps), which raises PermissionError
+        # before any other PATH candidate is tried.
+        with mock.patch("subprocess.run", side_effect=PermissionError(13, "Permission denied", "xurl")):
             self.assertFalse(xurl_x.is_available())
 
     def test_returns_false_on_timeout(self):

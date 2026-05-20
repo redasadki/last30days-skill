@@ -2,12 +2,15 @@
 
 import configparser
 import sqlite3
+import sys
 import textwrap
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from unittest.mock import patch
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills" / "last30days"))
 
 from scripts.lib.cookie_extract import (
     extract_cookies,

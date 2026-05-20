@@ -1,5 +1,6 @@
 # Exclude non-runtime files from `git archive` output.
-# Used by scripts/build-skill.sh to produce a claude.ai-upload-ready .skill file.
+# Used by skills/last30days/scripts/build-skill.sh to produce a
+# claude.ai-upload-ready .skill file from the canonical skills/last30days tree.
 # See docs/plans/2026-04-14-001-fix-skill-upload-200-file-limit-plan.md.
 
 # Anthropic canonical skill-packaging excludes
@@ -32,9 +33,8 @@ release-notes.md   export-ignore
 CHANGELOG.md       export-ignore
 uv.lock            export-ignore
 
-# Platform adapters - skill-upload path is platform-agnostic
-.agents/         export-ignore
-.codex-plugin/   export-ignore
+# Platform adapters are kept in git archives because Claude Code and Codex
+# plugin installs use the same repository archive as their source payload.
 .hermes-plugin/  export-ignore
 
 # CI workflows - repo-only, not needed at skill runtime

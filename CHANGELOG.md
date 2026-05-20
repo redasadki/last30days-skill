@@ -5,6 +5,169 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [3.3.0] - 2026-05-17
+
+A week-long shipping cycle: ~75 PRs merged plus 7 community fixes salvaged through PR triage. Big themes: install story modernized for the multi-harness world (Claude Code, Codex, Cursor, Gemini CLI, Copilot, Windsurf, and 50+ Agent Skills hosts), new emit and source modes, and a substantial reliability sweep across Reddit, X, Windows, YouTube, and the planner.
+
+### Added
+
+**Emit modes and sources**
+
+- `--emit=html` for shareable, print-friendly HTML research briefs ([#332](https://github.com/mvanhorn/last30days-skill/pull/332)).
+- **Digg AI 1000 source**, auto-enabled when `digg-pp-cli` is on PATH ([#370](https://github.com/mvanhorn/last30days-skill/pull/370)). Surfaces curated story clusters from the AI 1000 leaderboard and pulls attributable X-post quotes into the brief.
+
+**Configuration knobs**
+
+- `EXCLUDE_SOURCES` env var — the inverse of `INCLUDE_SOURCES`, honored in source count and pipeline filter ([#399](https://github.com/mvanhorn/last30days-skill/pull/399)).
+- `LAST30DAYS_YOUTUBE_SSH_HOST` — opt-in SSH routing for `yt-dlp` through a residential-IP host, for users on datacenter VPS hit by YouTube's bot-wall ([#376](https://github.com/mvanhorn/last30days-skill/pull/376)). Host validated against `^[a-zA-Z0-9._-]+$` to reject SSH option-injection. Transcript path unchanged (uses HTTP fallback).
+- macOS Keychain as a credential source — reads from the system keychain when env vars and config files aren't set ([#407](https://github.com/mvanhorn/last30days-skill/pull/407)).
+- Configuration enablement: env-var defaults and source-resilience patterns across the config layer ([#344](https://github.com/mvanhorn/last30days-skill/pull/344)).
+
+**Pipeline and storage**
+
+- Reddit URL auto-enrichment from web search via the public JSON API ([#366](https://github.com/mvanhorn/last30days-skill/pull/366)).
+- Per-run finding sightings recorded in the SQLite store ([#373](https://github.com/mvanhorn/last30days-skill/pull/373)).
+- Brave browser support for X/Twitter cookie extraction ([#320](https://github.com/mvanhorn/last30days-skill/pull/320)).
+
+**Tests and CI**
+
+- Full pytest suite restored to CI; 13 rotted tests repaired ([#416](https://github.com/mvanhorn/last30days-skill/pull/416)).
+- `greptile.json` added with `triggerOnUpdates` + `statusCheck` ([#418](https://github.com/mvanhorn/last30days-skill/pull/418)).
+- Advisory security workflow ([#368](https://github.com/mvanhorn/last30days-skill/pull/368)).
+- Parallel grounding backend test coverage ([#355](https://github.com/mvanhorn/last30days-skill/pull/355)).
+
+**Docs**
+
+- New `CONFIGURATION.md` with README pointers ([#339](https://github.com/mvanhorn/last30days-skill/pull/339)).
+- `docs/solutions/` learning capture for release-time consistency-test cascades ([#413](https://github.com/mvanhorn/last30days-skill/pull/413)) and the eval-not-in-CI design decision ([#417](https://github.com/mvanhorn/last30days-skill/pull/417)).
+
+### Changed
+
+**Install story modernized**
+
+- `npx skills add` is now the canonical install path for every harness ([#405](https://github.com/mvanhorn/last30days-skill/pull/405)). README and SKILL.md flipped to recommend `npx skills add . -g -y` over per-harness manual instructions. Surfaces Gemini CLI, Copilot, Windsurf, and 50+ other Agent Skills hosts that the install pattern reaches.
+- README dropped the Gemini CLI native-extension install path (now covered by `npx skills add`).
+- `hooks.json` made polyglot for Gemini CLI + Claude Code compatibility ([#318](https://github.com/mvanhorn/last30days-skill/pull/318)).
+
+**Skill semantics and multi-harness reframe**
+
+- `AGENTS.md` is now canonical; `CLAUDE.md` points at it ([#410](https://github.com/mvanhorn/last30days-skill/pull/410)). Reframes the project as a multi-harness Agent Skills package rather than a Claude-Code-specific tool.
+- SKILL.md path resolution rewritten: STEP 0 narrows to a Claude-Code-marketplaces-only stale-clone guard; Step 1 walks a single `SKILL_DIR` substitution pattern ([#400](https://github.com/mvanhorn/last30days-skill/pull/400), [#409](https://github.com/mvanhorn/last30days-skill/pull/409)). Removes ~80 lines of bash and fixes a real spec-vs-engine divergence where the previous resolver could pick a different install than the SKILL.md the model loaded from.
+- SKILL.md version regex consolidated into `lib/skill_meta.py` ([#412](https://github.com/mvanhorn/last30days-skill/pull/412)).
+- `--plan` / `--competitors-plan` invocation templates switched from inline single-quoted JSON to heredoc-written tmpfiles ([#404](https://github.com/mvanhorn/last30days-skill/pull/404), fixes [#403](https://github.com/mvanhorn/last30days-skill/issues/403)). Apostrophes in resolved context strings ("McDonald's", "people's choice") no longer break shell parsing.
+- `POSTS_PER_CLUSTER` raised 3→5 and render-side display limit 2→3 to match the per-source enrichment caps used by Reddit, HN, YouTube, TikTok, and GitHub. The previous caps routinely truncated cluster context.
+- Digg AI 1000 renamed to "Digg" in user-facing output ([#372](https://github.com/mvanhorn/last30days-skill/pull/372)) — footer line, source label, inline-quote suffix, why_relevant, container attribution. Internal references retain the upstream product name.
+- GitHub repo resolution canonicalized for ambiguous product comparisons ([#302](https://github.com/mvanhorn/last30days-skill/pull/302)).
+
+**Dependencies and tooling**
+
+- Dropped `requests` runtime dependency. All providers route through stdlib `urllib` via the `lib/http` wrapper ([#393](https://github.com/mvanhorn/last30days-skill/pull/393)).
+- Migrated to `gemini-3.1-flash-lite` GA model ([#378](https://github.com/mvanhorn/last30days-skill/pull/378)).
+- Aligned Codex/Claude plugin manifests + added Codex `AGENTS.md` ([#321](https://github.com/mvanhorn/last30days-skill/pull/321)).
+- pytest dev dep bumped 9.0.2 → 9.0.3 ([#414](https://github.com/mvanhorn/last30days-skill/pull/414)).
+
+### Removed
+
+- **BREAKING for Codex native-plugin users:** `.codex-plugin/plugin.json` and the matching SKILL_ROOT resolver branch in SKILL.md Step 1 ([#400](https://github.com/mvanhorn/last30days-skill/pull/400)). Codex users should install via `npx skills add mvanhorn/last30days-skill` or copy the skill to `~/.codex/skills/last30days/`.
+- **`skills/last30days/scripts/sync.sh`** — maintainer dev-deploy script ([#405](https://github.com/mvanhorn/last30days-skill/pull/405)). Replaced by `npx skills add . -g -y` (live-symlink into every detected harness's skill dir — better than sync.sh's copy model since edits propagate live). Hermes uses `hermes skills install mvanhorn/last30days-skill --force`; OpenClaw uses `clawhub install last30days-official`.
+- Orphaned `SPEC.md` and `TASKS.md` ([#419](https://github.com/mvanhorn/last30days-skill/pull/419)).
+
+### Fixed
+
+**Reddit**
+
+- `lstrip("r/")` mangled subreddits starting with `r` (`r/robotics` → `obotics`, `r/ruby` → `uby`); replaced with `removeprefix("r/")` at 4 sites (Alex Key, salvaged from #288).
+- Browser-like User-Agent + `Accept-Language`/`Accept-Encoding`/`Connection` headers + gzip decompression to fix `urllib` 403s on Reddit's public JSON endpoint (Franco Carballar, salvaged from #199).
+- HTTP 402 re-raised across all three ScrapeCreators paths (`_global_search`, `_subreddit_search`, `fetch_post_comments`) so the OpenAI/public-JSON fallback chain triggers when credits are exhausted (Jonathan Oppenheim, salvaged from #170).
+
+**Authentication and credentials**
+
+- Restored multi-key rotation for `SCRAPECREATORS_API_KEY` accidentally dropped in v3.0.6 (Eric Oberhofer, salvaged from #287). Comma-separated keys round-robin via `random.choice` per run.
+
+**Windows compatibility**
+
+- `os.killpg` in `_cleanup_children()` guarded with `hasattr(os, "killpg")`, falls back to `os.kill(SIGTERM)` (gujishh, salvaged from #226).
+- POSIX-style secret-permission warning skipped on Windows ([#357](https://github.com/mvanhorn/last30days-skill/pull/357)).
+- Render uses forward slashes in save-path footer for Windows ([#338](https://github.com/mvanhorn/last30days-skill/pull/338)).
+
+**xAI / X / xurl**
+
+- `parse_x_response` now raises `http.HTTPError` on empty output, missing JSON, or decode failure — surfaces in `errors_by_source` instead of silently returning an empty result list (Kaustav Mishra, salvaged from #155).
+- `xurl` treats `PermissionError` from PATH lookup as unavailable ([#322](https://github.com/mvanhorn/last30days-skill/pull/322)).
+
+**YouTube**
+
+- SC YouTube + multi-token HN searches unblocked ([#388](https://github.com/mvanhorn/last30days-skill/pull/388)).
+- Transcript-fetch ratio surfaced + degraded-run nudge for stale `yt-dlp` ([#340](https://github.com/mvanhorn/last30days-skill/pull/340)).
+
+**bird_x / HTTP**
+
+- Subprocess retry on non-JSON stdout to handle X anti-bot HTML interstitials ([#383](https://github.com/mvanhorn/last30days-skill/pull/383)).
+- HTTP retry budget expanded + exponential backoff on DNS resolution failure ([#382](https://github.com/mvanhorn/last30days-skill/pull/382)).
+- Parallel AI search aligned with current API schema ([#341](https://github.com/mvanhorn/last30days-skill/pull/341)).
+- Parallel web backend routed through grounding ([#354](https://github.com/mvanhorn/last30days-skill/pull/354)).
+
+**Planner and sources**
+
+- `xquik` registered in `SOURCE_CAPABILITIES` ([#336](https://github.com/mvanhorn/last30days-skill/pull/336), fixes [#319](https://github.com/mvanhorn/last30days-skill/issues/319)).
+- Honor explicit optional source requests ([#356](https://github.com/mvanhorn/last30days-skill/pull/356)).
+- ScrapeCreators source-gating aligned between code and docs ([#415](https://github.com/mvanhorn/last30days-skill/pull/415)).
+- OpenClaw works without ScrapeCreators key ([#392](https://github.com/mvanhorn/last30days-skill/pull/392), by @thinkun).
+
+**Render, version display, hosting paths**
+
+- Hardcoded `v3.0.0` in render replaced with dynamic `_skill_version()` ([#365](https://github.com/mvanhorn/last30days-skill/pull/365)).
+- Comparison HTML artifacts saved correctly ([#389](https://github.com/mvanhorn/last30days-skill/pull/389)).
+- `OPENROUTER_DEFAULT` model ID corrected ([#323](https://github.com/mvanhorn/last30days-skill/pull/323)).
+- OpenClaw poll-timing initialized once ([#358](https://github.com/mvanhorn/last30days-skill/pull/358)).
+- Prefer sandboxed Safari cookie path ([#343](https://github.com/mvanhorn/last30days-skill/pull/343)).
+- Preserve clean mode for last-run state ([#334](https://github.com/mvanhorn/last30days-skill/pull/334)).
+- Replaced hardcoded `/Users/mvanhorn/...` paths in `test-v1-vs-v2.sh` with portable env-var overrides (Dave Morin, salvaged from #297).
+
+**Hooks**
+
+- `check-config.sh` path-quoting fix for paths with spaces ([#337](https://github.com/mvanhorn/last30days-skill/pull/337)).
+- Replaced unsafe `eval` with `declare` in `check-config.sh` ([#364](https://github.com/mvanhorn/last30days-skill/pull/364)).
+
+**Sync and version metadata**
+
+- `sync.sh` pointed at this repo's plugin cache, not the private repo's ([#402](https://github.com/mvanhorn/last30days-skill/pull/402)).
+- Sync cache target bumped to 3.2.1 to match SKILL.md ([#397](https://github.com/mvanhorn/last30days-skill/pull/397)).
+- ScrapeCreators free-tier credit count corrected to 100 in docs ([#369](https://github.com/mvanhorn/last30days-skill/pull/369), fixes [#367](https://github.com/mvanhorn/last30days-skill/issues/367)).
+- Gemini extension version synced ([#349](https://github.com/mvanhorn/last30days-skill/pull/349)).
+- Various stale path/link fixes ([#345](https://github.com/mvanhorn/last30days-skill/pull/345), [#346](https://github.com/mvanhorn/last30days-skill/pull/346), [#347](https://github.com/mvanhorn/last30days-skill/pull/347), [#348](https://github.com/mvanhorn/last30days-skill/pull/348), [#351](https://github.com/mvanhorn/last30days-skill/pull/351)).
+
+### Contributors
+
+First-time contributors whose fixes shipped in this release (most via PR triage salvage — fix re-applied directly to main with co-author credit when path migration made the original branch un-rebaseable):
+
+- Dave Morin — portable test-harness paths
+- Alex Key — `removeprefix("r/")` for subreddit names
+- Eric Oberhofer — multi-key rotation restored
+- gujishh — Windows process cleanup
+- Franco Carballar — Reddit browser-like headers
+- Jonathan Oppenheim — Reddit 402 fallback chain
+- Kaustav Mishra — xAI error surfacing
+- [@thinkun](https://github.com/thinkun) ([#363](https://github.com/mvanhorn/last30days-skill/pull/363)) — OpenClaw ScrapeCreators-key-optional fix
+
+Full PR list at [github.com/mvanhorn/last30days-skill/releases/tag/v3.3.0](https://github.com/mvanhorn/last30days-skill/releases/tag/v3.3.0).
+
+## [3.2.0] - 2026-05-09
+
+### Added
+
+- Add `--emit=html` for shareable, print-friendly HTML research briefs.
+- **Digg AI 1000 source** (auto-enabled when `digg-pp-cli` is on PATH). Surfaces curated story clusters from the AI 1000 leaderboard and pulls attributable X-post quotes into the brief as `[@handle](xUrl) via Digg AI 1000: ...` lines. Footer line: `⛏️ Digg AI 1000: N clusters │ K posts │ M authors`. No X auth required for the inline quotes since they flow through Digg's read-only endpoints.
+
+## [3.1.1] - 2026-04-24
+
+### Fixed
+
+- **Codex plugin layout.** Move the canonical runtime payload under `skills/last30days/` and update Codex/Claude plugin metadata and tests for the relocated engine path.
+- **Claude Code cache resolution.** Resolve Claude plugin installs to `skills/last30days/scripts/last30days.py` after the plugin-layout restructure.
+
 ## [3.1.0] - 2026-04-22
 
 Consolidates the 3.0.10 to 3.0.14 dev cycle (commenter handles, `--competitors`, per-entity Step 0.55, vs-mode N passes, comparison title attribution) and republishes the OpenClaw bundle, which had been frozen on ClawHub at `3.0.0-open` since April 8.
@@ -16,7 +179,7 @@ Consolidates the 3.0.10 to 3.0.14 dev cycle (commenter handles, `--competitors`,
 ### Fixed
 
 - **Claude Code plugin manifest path-escape.** The `.claude-plugin/plugin.json` `skills` key was removed in commit `93fbed2` but never shipped in a tagged release. Installing via `/plugin install last30days-skill` could hit `/doctor`'s `Path escapes plugin directory: ./ (skills)` error. This release ships the fix. Closes [#306](https://github.com/mvanhorn/last30days-skill/issues/306).
-- **Broken README link.** The README's "source of truth" link pointed at `skills/last30days/SKILL.md`, a path that does not exist. Fixed to point at root `SKILL.md`.
+- **Broken README link.** The README's "source of truth" link pointed at root `SKILL.md`, which is no longer maintained after the plugin-layout restructure. Fixed to point at `skills/last30days/SKILL.md`.
 
 ### Dev cycle journal (3.0.10 - 3.0.14, not separately tagged)
 
@@ -78,6 +241,7 @@ Individual changelog entries for 3.0.10 through 3.0.14 below document the increm
 ### Fixed
 
 - **TikTok author preference.** `_fetch_post_comments` in `scripts/lib/tiktok.py` preferred `user.nickname` over `user.unique_id`, so the engine captured display names ("Moosa Noormahomed") instead of @handles ("moosanoormahomed"). Flipped to prefer `unique_id`. Nickname still wins as a fallback when `unique_id` is missing. Display names can contain emoji, spaces, and non-Latin characters that do not round-trip to a profile URL; the @handle is the stable identifier.
+- **Single plugin payload layout.** The canonical runtime moved to `skills/last30days/` for both Claude Code and Codex plugin loading. Root-level `SKILL.md`, `scripts/`, `agents/`, and `assets/` are no longer maintained as duplicate copies.
 
 ### Behavior fallback
 

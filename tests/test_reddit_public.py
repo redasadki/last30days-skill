@@ -9,7 +9,7 @@ import sys
 import os
 
 # Ensure lib is importable
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "skills", "last30days", "scripts"))
 
 from lib import reddit_public
 
@@ -313,7 +313,7 @@ class TestSearchRedditPublicHighLevel:
         reddit_public.search("test")
 
         req = mock_urlopen.call_args[0][0]
-        assert req.get_header("User-agent") == "last30days/3.0 (research tool)"
+        assert "Mozilla/5.0" in req.get_header("User-agent")
 
 
 class TestMissingSubreddit:

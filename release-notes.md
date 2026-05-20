@@ -1,52 +1,64 @@
+## v3.3.0 — install everywhere, ship the reliability sweep
+
 The AI world reinvents itself every month. This skill keeps you current.
 
-`/last30days` researches your topic across Reddit, X, YouTube, TikTok, Instagram, Hacker News, Polymarket, GitHub, and 5+ more sources from the last 30 days, finds what the community is actually upvoting, sharing, betting on, and saying on camera, and writes you a grounded narrative with real citations.
+`/last30days` researches your topic across Reddit, X, YouTube, TikTok, Instagram, Hacker News, Polymarket, GitHub, Digg, and 5+ more sources from the last 30 days, finds what the community is actually upvoting, sharing, betting on, and saying on camera, and writes you a grounded narrative with real citations.
 
-## v3 is the intelligent search release
+## What's new in v3.3.0
 
-v3 is a ground-up engine rewrite by [@j-sperling](https://github.com/j-sperling). The old engine searched keywords. The new engine understands your topic first, then searches the right people and communities.
+### Install everywhere with one command
 
-Type "OpenClaw" and v3 resolves @steipete, r/openclaw, r/ClaudeCode, and the right YouTube channels and TikTok hashtags before a single API call fires. Type "Peter Steinberger" and it resolves his X handle and GitHub profile, switches to person mode, and shows what he shipped this month at 85% merge rate across 22 PRs. None of that was on Google.
+`npx skills add mvanhorn/last30days-skill -g -y` is now the canonical install path for **every harness** — Claude Code, OpenAI Codex CLI, Cursor, Gemini CLI, GitHub Copilot, Windsurf, and 50+ other Agent Skills hosts. The skill auto-detects each harness's skills directory and symlinks in place, so edits propagate live. No more per-harness manual paths in the README.
 
-## Headline features
+### New emit mode: `--emit=html`
 
-### Intelligent pre-research
+Shareable, print-friendly HTML briefs. Drop the file in Slack, mail it to a stakeholder, or print it for the meeting. Same data as compact mode, structured for human reading.
 
-The killer feature. A new Python pre-research brain resolves X handles, GitHub repos, subreddits, TikTok hashtags, and YouTube channels before searching. Bidirectional: person to company, product to founder, name to GitHub profile. The right subreddits, the right handles, the right hashtags, all resolved before a single API call.
+### New source: Digg
 
-### Best Takes
+Digg surfaces curated story clusters from the AI 1000 leaderboard and pulls attributable X-post quotes directly into the brief. Auto-enabled when `digg-pp-cli` is on PATH. Footer line: `⛏️ Digg: N clusters │ K posts │ M authors`. No X auth required for the inline quotes.
 
-A second LLM judge scores every result for humor, wit, and virality alongside relevance. Every brief now ends with a Best Takes section surfacing the cleverest one-liners and most viral quotes. The Reddit and X people are funny, and the old engine buried their best stuff.
+### YouTube residential-IP routing (`LAST30DAYS_YOUTUBE_SSH_HOST`)
 
-### Cross-source cluster merging
+Running on a datacenter VPS (Hetzner, DigitalOcean, AWS, etc.)? YouTube's bot-wall fingerprints datacenter IP ranges before any cookie check. Set `LAST30DAYS_YOUTUBE_SSH_HOST=<ssh-alias>` and yt-dlp runs over SSH against a residential-IP host instead. One env var, no proxy service required.
 
-When the same story hits Reddit, X, and YouTube, v3 merges them into one cluster instead of three duplicates. Entity-based overlap detection catches matches even when the titles use different words.
+### macOS Keychain credential source
 
-### Single-pass comparisons
+When env vars and config files aren't set, the engine now reads credentials from the macOS Keychain. Stores secrets where macOS expects them; nothing on disk in plaintext.
 
-"X vs Y" used to run three serial passes (12+ minutes). v3 runs one pass with entity-aware subqueries for both sides at once. Same depth, 3 minutes.
+### `EXCLUDE_SOURCES` env var
 
-### GitHub person-mode and project-mode
+The inverse of `INCLUDE_SOURCES`. Useful for "everything except TikTok" or "everything except the slow ones."
 
-When the topic is a person, the engine switches from keyword search to author-scoped queries. PR velocity, top repos by stars, release notes for what shipped this month, woven into the narrative alongside X posts and Reddit threads.
+## Reliability sweep
 
-When the topic is a project, it pulls live star counts, READMEs, releases, and top issues from the GitHub API. No stale blog posts.
+This release closes a long tail of platform-specific issues that have been accumulating:
 
-### ELI5 mode
+- **Reddit**: subreddits starting with `r` no longer get mangled by `lstrip("r/")`. Browser-like headers + gzip handling fix urllib 403s on the public JSON endpoint. HTTP 402 now triggers the OpenAI/public-JSON fallback chain when ScrapeCreators credits are exhausted.
+- **xAI**: empty or malformed responses now surface in `errors_by_source` instead of silently returning zero results.
+- **Windows**: process cleanup no longer crashes on `os.killpg`. POSIX-style secret-permission warnings skipped. Save-path footer uses forward slashes.
+- **Auth**: comma-separated `SCRAPECREATORS_API_KEY=key1,key2` rotation restored (accidentally dropped in v3.0.6).
+- **YouTube + HN**: SC YouTube + multi-token HN searches unblocked. Transcript-fetch ratio surfaced.
+- **HTTP**: retry budget expanded with exponential backoff on DNS failure. Parallel AI search aligned with current API schema.
+- **OpenClaw**: now works without a ScrapeCreators key. Poll-timing initialized once.
 
-Say "eli5 on" after any research run. The synthesis rewrites in plain language. No jargon. Same data, same sources, same citations, just clearer. Say "eli5 off" to go back.
+## Multi-harness reframe
 
-### 13+ sources
+`AGENTS.md` is now the canonical project doc; `CLAUDE.md` points at it. The skill is positioned as a multi-harness Agent Skills package, not a Claude-Code-specific tool. SKILL.md's path resolution rewrote `SKILL_ROOT` → `SKILL_DIR`, removing ~80 lines of bash and fixing a real spec-vs-engine divergence bug.
 
-v3 adds Threads, Pinterest, Perplexity, Bluesky, and Parallel AI grounding to the existing Reddit, X, YouTube, TikTok, Instagram, Hacker News, Polymarket, GitHub, and Web lineup. Perplexity Deep Research (`--deep-research`) gives you 50+ citation reports for serious investigation.
+## Breaking change
 
-### Per-author cap and entity disambiguation
-
-Max 3 items per author prevents single-voice dominance. Synthesis trusts resolved handles over fuzzy keyword matches.
+**`.codex-plugin/plugin.json` removed.** Codex native-plugin users should install via `npx skills add mvanhorn/last30days-skill` or copy the skill to `~/.codex/skills/last30days/`. The `npx skills add` path now reaches every harness uniformly.
 
 ## Install
 
-Claude Code:
+Any harness (recommended):
+
+```
+npx skills add mvanhorn/last30days-skill -g -y
+```
+
+Claude Code marketplace:
 
 ```
 /plugin marketplace add mvanhorn/last30days-skill
@@ -58,29 +70,21 @@ OpenClaw:
 clawhub install last30days-official
 ```
 
-OpenAI Codex CLI: run `codex` from a checkout of this repo and v3's skill at `.agents/skills/last30days/SKILL.md` will be discovered automatically. Or copy `SKILL.md` to `~/.agents/skills/last30days/SKILL.md` for a global install.
-
 Zero config. Reddit, Hacker News, Polymarket, and GitHub work immediately. Run it once and the setup wizard unlocks X, YouTube, TikTok, and more in 30 seconds.
 
-## v3 Community
+## Contributors
 
-v3 was shaped by community contributors whose PRs and issues inspired core features. Their code wasn't merged directly (v3 was a ground-up rewrite), but their ideas drove what shipped.
+First-time contributors whose fixes shipped in v3.3.0 (most via PR triage salvage — the fix re-applied directly to main with co-author credit when path migration made the original branch un-rebaseable):
 
-Thanks to @uppinote20, @zerone0x, @thinkun, @thomasmktong, @fanispoulinakisai-boop, @pejmanjohn, @zl190, and @hnshah. See [CONTRIBUTORS.md](CONTRIBUTORS.md) for the full list.
+- Dave Morin — portable test-harness paths
+- Alex Key — `removeprefix("r/")` for subreddit names
+- Eric Oberhofer — multi-key rotation restored
+- gujishh — Windows process cleanup
+- Franco Carballar — Reddit browser-like headers
+- Jonathan Oppenheim — Reddit 402 fallback chain
+- Kaustav Mishra — xAI error surfacing
+- [@thinkun](https://github.com/thinkun) — OpenClaw ScrapeCreators-key-optional fix
 
-Contributors who shaped the release itself:
-
-- @Jah-yee (#153) surfaced the need for a real Codex CLI integration, which shipped in #219
-- @Cody-Coyote (#204) reported the marketplace validation bug that needed fixing before v3 could ship cleanly
-- @dannyshmueli pushed for v3 and Codex family support publicly on X
-
-Full Added / Changed / Fixed detail lives in [CHANGELOG.md](CHANGELOG.md) under `[3.0.0]`.
-
-## Earlier contributors
-
-From the v1 and v2 lineage:
-
-- [@galligan](https://github.com/galligan) for marketplace plugin inspiration
-- [@hutchins](https://x.com/hutchins) for pushing the YouTube feature
+Plus every contributor who shipped one of the ~75 PRs merged this cycle. See [CHANGELOG.md](CHANGELOG.md) under `[3.3.0]` for the full PR list and `git log v3.2.0..v3.3.0` for the complete commit graph.
 
 30 days of research. 30 seconds of work. Thirteen sources. Zero stale prompts.

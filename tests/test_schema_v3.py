@@ -2,7 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills" / "last30days" / "scripts"))
 
 from lib import schema
 
@@ -16,8 +16,8 @@ class SchemaV3Tests(unittest.TestCase):
             generated_at="2026-03-16T00:00:00+00:00",
             provider_runtime=schema.ProviderRuntime(
                 reasoning_provider="gemini",
-                planner_model="gemini-3.1-flash-lite-preview",
-                rerank_model="gemini-3.1-flash-lite-preview",
+                planner_model="gemini-3.1-flash-lite",
+                rerank_model="gemini-3.1-flash-lite",
             ),
             query_plan=schema.QueryPlan(
                 intent="breaking_news",

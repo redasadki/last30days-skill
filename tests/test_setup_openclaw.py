@@ -9,7 +9,7 @@ from unittest.mock import patch, MagicMock, call
 import pytest
 
 # Add scripts dir to path
-SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
+SCRIPTS_DIR = Path(__file__).parent.parent / "skills" / "last30days" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from lib import setup_wizard
@@ -63,6 +63,19 @@ class TestRunOpenclawSetup:
         assert result["keys"]["xai"] is True
         assert result["keys"]["brave"] is True
         assert result["keys"]["scrapecreators"] is False
+
+    def test_openclaw_metadata_keeps_scrapecreators_optional(self):
+        """OpenClaw metadata should not hard-require the ScrapeCreators key."""
+        skill_md = Path(__file__).parent.parent / "skills" / "last30days" / "SKILL.md"
+        text = skill_md.read_text()
+        assert "SCRAPECREATORS_API_KEY" in text
+        expected = (
+            "requires:\n"
+            "      env: []\n"
+            "      optionalEnv:\n"
+            "        - SCRAPECREATORS_API_KEY"
+        )
+        assert expected in text
 
     @patch("shutil.which")
     def test_x_method_xai(self, mock_which):
@@ -200,7 +213,9 @@ class TestPollDeviceAuth:
     @patch("lib.setup_wizard.urlopen")
     def test_timeout_returns_none(self, mock_urlopen, mock_time):
         """Returns None when timeout is exceeded."""
-        # Simulate time passing beyond deadline
+        # poll_device_auth captures started_at once, derives deadline + last_reminder
+        # from it, then checks time.time() in the while-loop. Two values: started_at,
+        # then a value past the deadline so the loop exits immediately.
         mock_time.time = MagicMock(side_effect=[0, 301])
         mock_time.sleep = MagicMock()
 
@@ -211,7 +226,9 @@ class TestPollDeviceAuth:
     @patch("lib.setup_wizard.urlopen")
     def test_expired_token_returns_none(self, mock_urlopen, mock_time):
         """Returns None on expired_token error."""
-        mock_time.time = MagicMock(side_effect=[0, 0])
+        # Loop terminates via urlopen response, not the clock — pin time to 0
+        # so the deadline check stays a non-event regardless of call count.
+        mock_time.time = MagicMock(return_value=0)
         mock_time.sleep = MagicMock()
 
         expired_resp = MagicMock()
@@ -230,7 +247,7 @@ class TestPollDeviceAuth:
         """HTTP 400 during polling continues (authorization pending)."""
         from urllib.error import HTTPError
 
-        mock_time.time = MagicMock(side_effect=[0, 0, 0])
+        mock_time.time = MagicMock(return_value=0)
         mock_time.sleep = MagicMock()
 
         success_resp = MagicMock()

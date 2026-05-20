@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills" / "last30days" / "scripts"))
 
 import evaluate_search_quality as evaluator
 
@@ -125,7 +125,7 @@ class EvaluatorV3Tests(unittest.TestCase):
                 topic="test topic",
                 query_type="general",
                 items=[{"key": "a"}],
-                judge_model="gemini-3.1-flash-lite-preview",
+                judge_model="gemini-3.1-flash-lite",
                 gemini_api_key="key",
             )
             self.assertEqual({"a": 3}, cached)
@@ -136,7 +136,7 @@ class EvaluatorV3Tests(unittest.TestCase):
                 topic="test topic",
                 query_type="general",
                 items=[],
-                judge_model="gemini-3.1-flash-lite-preview",
+                judge_model="gemini-3.1-flash-lite",
                 gemini_api_key=None,
             )
             self.assertEqual({}, skipped)

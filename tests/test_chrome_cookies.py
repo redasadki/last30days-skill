@@ -4,11 +4,14 @@ import hashlib
 import os
 import sqlite3
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from unittest import mock
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills" / "last30days"))
 
 from scripts.lib.chrome_cookies import (
     CHROME_COOKIES_DB,
@@ -283,7 +286,7 @@ class TestFullExtraction:
 
         with mock.patch("scripts.lib.chrome_cookies.CHROME_COOKIES_DB", Path(db_path)):
             with mock.patch(
-                "scripts.lib.chrome_cookies._get_chrome_encryption_key",
+                "scripts.lib.chrome_cookies._get_chromium_encryption_key",
                 return_value=KNOWN_PASSPHRASE,
             ):
                 result = extract_chrome_cookies_macos(".x.com", ["auth_token", "ct0"])
@@ -316,7 +319,7 @@ class TestFullExtraction:
 
         with mock.patch("scripts.lib.chrome_cookies.CHROME_COOKIES_DB", Path(db_path)):
             with mock.patch(
-                "scripts.lib.chrome_cookies._get_chrome_encryption_key",
+                "scripts.lib.chrome_cookies._get_chromium_encryption_key",
                 return_value=KNOWN_PASSPHRASE,
             ):
                 result = extract_chrome_cookies_macos(".x.com", ["auth_token"])

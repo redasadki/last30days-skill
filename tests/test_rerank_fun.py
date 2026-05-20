@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
+SCRIPTS_DIR = Path(__file__).parent.parent / "skills" / "last30days" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from lib import schema

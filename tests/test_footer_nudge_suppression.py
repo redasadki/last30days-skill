@@ -6,15 +6,16 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT / "scripts"))
+sys.path.insert(0, str(REPO_ROOT / "skills" / "last30days" / "scripts"))
 
 
 def _engine() -> Path:
-    return REPO_ROOT / "scripts" / "last30days.py"
+    return REPO_ROOT / "skills" / "last30days" / "scripts" / "last30days.py"
 
 
 class FooterNudgeSuppressionTests(unittest.TestCase):
@@ -27,13 +28,31 @@ class FooterNudgeSuppressionTests(unittest.TestCase):
             "--emit=md",
             *argv,
         ]
-        env = {**os.environ, "LAST30DAYS_SKIP_PREFLIGHT": "1"}
+        env = {
+            **os.environ,
+            "LAST30DAYS_SKIP_PREFLIGHT": "1",
+            # Skip ~/.config/last30days/.env so a contributor's saved
+            # BRAVE/EXA/SERPER/PARALLEL key doesn't make grounding "available"
+            # and suppress the promo we're checking for.
+            "LAST30DAYS_CONFIG_DIR": "",
+            # Pin X as available so _missing_sources_for_promo selects "web"
+            # (otherwise the "x" promo wins and the BRAVE_API_KEY string never
+            # appears).
+            "XAI_API_KEY": "test-stub",
+        }
         # Strip any grounded-web keys the host might have so the promo path
-        # triggers deterministically in mock + no-backend.
+        # triggers deterministically in mock + no-backend. Also strip X cookie
+        # credentials so XAI_API_KEY is the unambiguous X backend.
         for key in ("BRAVE_API_KEY", "EXA_API_KEY", "SERPER_API_KEY",
-                    "PARALLEL_API_KEY", "OPENROUTER_API_KEY"):
+                    "PARALLEL_API_KEY", "OPENROUTER_API_KEY",
+                    "AUTH_TOKEN", "CT0", "LAST30DAYS_X_BACKEND"):
             env.pop(key, None)
-        return subprocess.run(cmd, capture_output=True, text=True, env=env)
+        # Run from a tmpdir so _find_project_env() can't walk up into any
+        # .claude/last30days.env above the repo on the contributor's machine.
+        with tempfile.TemporaryDirectory() as tmp:
+            return subprocess.run(
+                cmd, capture_output=True, text=True, env=env, cwd=tmp,
+            )
 
     def test_bare_run_emits_web_promo(self):
         result = self._run(topic="OpenAI")
