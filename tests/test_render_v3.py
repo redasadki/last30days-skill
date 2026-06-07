@@ -1,8 +1,4 @@
-import sys
 import unittest
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills" / "last30days" / "scripts"))
 
 from lib import render, schema
 
@@ -635,7 +631,6 @@ class YoutubeFooterTranscriptRatioTests(unittest.TestCase):
         text = render.render_compact(report)
         # No YouTube footer line at all - so no transcript segment either
         self.assertNotIn("with transcripts", text)
-
 
 if __name__ == "__main__":
     unittest.main()
